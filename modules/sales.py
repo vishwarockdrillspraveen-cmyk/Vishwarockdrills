@@ -116,12 +116,12 @@ def sales_page():
                         st.stop()
                     actual_price = default_sale_price
                     quantity = st.number_input("Quantity", min_value=1, step=1, value=1)
-                    st.text_input("Sale Price (Auto)", value=f"{actual_price:.2f}", disabled=True)
-                    st.text_input("Total Sale Value", value=f"{actual_price * quantity:.2f}", disabled=True)
+                    st.text_input("", value=f"{actual_price:.2f}", disabled=True, label_visibility="collapsed")
+                    st.text_input("", value=f"{actual_price * quantity:.2f}", disabled=True, label_visibility="collapsed")
                 with sale_col2:
                     paid_amount = 0.0
                     pending_amount = max(actual_price - paid_amount, 0.0)
-                    st.text_input("Pending Amount", value=f"{pending_amount:.2f}", disabled=True)
+                    st.text_input("", value=f"{pending_amount:.2f}", disabled=True, label_visibility="collapsed")
 
                 st.markdown("### Product Summary")
                 summary_col1, summary_col2, summary_col3 = st.columns(3)
@@ -235,9 +235,9 @@ def sales_page():
                 edited_quantity = st.number_input("Quantity", min_value=1, step=1, value=int(selected_sale_row[12] if len(selected_sale_row) > 12 else 1))
                 edited_paid_amount = float(selected_sale_row[7] or 0)
                 edited_pending_amount = max(edited_actual_price - edited_paid_amount, 0.0)
-                st.text_input("Sale Price (Auto)", value=f"{edited_actual_price:.2f}", disabled=True)
-                st.text_input("Total Sale Value", value=f"{edited_actual_price * edited_quantity:.2f}", disabled=True)
-                st.text_input("Pending Amount", value=f"{edited_pending_amount:.2f}", disabled=True)
+                st.text_input("", value=f"{edited_actual_price:.2f}", disabled=True, label_visibility="collapsed")
+                st.text_input("", value=f"{edited_actual_price * edited_quantity:.2f}", disabled=True, label_visibility="collapsed")
+                st.text_input("", value=f"{edited_pending_amount:.2f}", disabled=True, label_visibility="collapsed")
 
                 warranty_applicable = bool(selected_sale_row[9])
                 warranty_start_date = selected_sale_row[10]
