@@ -105,7 +105,7 @@ main_menu_items = [
     "Purchase Details",
     "Sales",
     "Advances",
-    "Warranties"
+    "Warranty-Claims"
 ]
 
 if "menu" not in st.session_state:
@@ -168,6 +168,6 @@ elif menu == "Advances":
         from modules.advances import advances_page
         advances_page(advances_menu)
 
-elif menu == "Warranties":
+elif menu == "Warranty-Claims":
     from modules.warranties import warranty_page
     warranty_page()
