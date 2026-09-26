@@ -741,10 +741,11 @@ def get_product_warranty_details(product_id):
 
 
 def add_sale(customer_phone, product_id, product_name, product_company, sale_date, actual_price, paid_amount, pending_amount,
-             warranty_applicable=False, warranty_start_date=None, warranty_end_date=None):
+             warranty_applicable=False, warranty_start_date=None, warranty_end_date=None, quantity=1):
     valid_sale_date = validate_date_value(sale_date, "Sale Date")
     valid_warranty_start_date = validate_date_value(warranty_start_date, "Warranty Start Date") if warranty_applicable and warranty_start_date else None
     valid_warranty_end_date = validate_date_value(warranty_end_date, "Warranty End Date") if warranty_applicable and warranty_end_date else None
+    valid_quantity = int(quantity or 1)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -753,8 +754,8 @@ def add_sale(customer_phone, product_id, product_name, product_company, sale_dat
         """
         INSERT INTO sales
         (customer_phone, product_id, product_name, product_company, sale_date, actual_price, paid_amount, pending_amount,
-         warranty_applicable, warranty_start_date, warranty_end_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         warranty_applicable, warranty_start_date, warranty_end_date, quantity)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             customer_phone.strip(),
@@ -768,6 +769,7 @@ def add_sale(customer_phone, product_id, product_name, product_company, sale_dat
             int(bool(warranty_applicable)),
             valid_warranty_start_date,
             valid_warranty_end_date,
+            valid_quantity,
         )
     )
     sale_id = cursor.lastrowid
@@ -787,10 +789,11 @@ def add_sale(customer_phone, product_id, product_name, product_company, sale_dat
 
 
 def update_sale(sale_id, customer_phone, product_id, product_name, product_company, sale_date, actual_price, paid_amount,
-               pending_amount, warranty_applicable=False, warranty_start_date=None, warranty_end_date=None):
+               pending_amount, warranty_applicable=False, warranty_start_date=None, warranty_end_date=None, quantity=1):
     valid_sale_date = validate_date_value(sale_date, "Sale Date")
     valid_warranty_start_date = validate_date_value(warranty_start_date, "Warranty Start Date") if warranty_applicable and warranty_start_date else None
     valid_warranty_end_date = validate_date_value(warranty_end_date, "Warranty End Date") if warranty_applicable and warranty_end_date else None
+    valid_quantity = int(quantity or 1)
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -808,7 +811,8 @@ def update_sale(sale_id, customer_phone, product_id, product_name, product_compa
             pending_amount = ?,
             warranty_applicable = ?,
             warranty_start_date = ?,
-            warranty_end_date = ?
+            warranty_end_date = ?,
+            quantity = ?
         WHERE sale_id = ?
         """,
         (
@@ -823,6 +827,7 @@ def update_sale(sale_id, customer_phone, product_id, product_name, product_compa
             int(bool(warranty_applicable)),
             valid_warranty_start_date,
             valid_warranty_end_date,
+            valid_quantity,
             sale_id
         )
     )
@@ -868,7 +873,8 @@ def get_sales():
             pending_amount,
             warranty_applicable,
             warranty_start_date,
-            warranty_end_date
+            warranty_end_date,
+            quantity
         FROM sales
         ORDER BY sale_date DESC, product_name
         """
@@ -1324,6 +1330,9 @@ def initialize_database():
 
     cursor.execute("PRAGMA table_info(sales)")
     sales_columns = [row[1] for row in cursor.fetchall()]
+    if sales_columns and "quantity" not in sales_columns:
+        cursor.execute("ALTER TABLE sales ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1")
+
     if sales_columns and not all(column in sales_columns for column in [
         "product_name",
         "product_company",
@@ -1349,6 +1358,7 @@ def initialize_database():
             warranty_applicable INTEGER NOT NULL DEFAULT 0,
             warranty_start_date TEXT,
             warranty_end_date TEXT,
+            quantity INTEGER NOT NULL DEFAULT 1,
             FOREIGN KEY (customer_phone) REFERENCES customers(phone)
         )
         """)
