@@ -106,7 +106,12 @@ def sales_page():
                 product_id = selected_product_row[0]
                 product_name = selected_product_row[2]
                 product_company = selected_product_row[1]
-                default_sale_price = get_product_sale_price(product_id)
+                default_sale_price = float(get_product_sale_price(product_id) or 0)
+
+                sale_product_key = f"sale_product_{product_id}"
+                if "current_sale_product_id" not in st.session_state or str(st.session_state.current_sale_product_id) != str(product_id):
+                    st.session_state.current_sale_product_id = str(product_id)
+                    st.session_state.sale_actual_price = default_sale_price
 
                 st.markdown("### Sale Details")
                 sale_col1, sale_col2 = st.columns(2)
@@ -114,15 +119,15 @@ def sales_page():
                     sale_date = _safe_date_input("Sale Date")
                     if sale_date is None:
                         st.stop()
-                    actual_price_key = f"sale_actual_price_{product_id}"
                     actual_price = st.number_input(
                         "Actual Price",
                         min_value=0.0,
                         step=0.01,
                         format="%.2f",
-                        value=float(default_sale_price or 0),
-                        key=actual_price_key,
+                        value=st.session_state.sale_actual_price,
+                        key=sale_product_key,
                     )
+                    st.session_state.sale_actual_price = actual_price
                     quantity = st.number_input("Quantity", min_value=1, step=1, value=1)
                 with sale_col2:
                     paid_amount = st.number_input("Amount Already Paid", min_value=0.0, step=0.01, format="%.2f")
@@ -236,15 +241,21 @@ def sales_page():
                 if edited_sale_date is None:
                     st.stop()
 
+                edit_product_key = f"edit_sale_product_{selected_sale_id}_{product_id}"
                 default_edit_price = float(selected_sale_row[6] or get_product_sale_price(product_id) or 0)
+                if "current_edit_sale_product_id" not in st.session_state or str(st.session_state.current_edit_sale_product_id) != f"{selected_sale_id}_{product_id}":
+                    st.session_state.current_edit_sale_product_id = f"{selected_sale_id}_{product_id}"
+                    st.session_state.edit_sale_actual_price = default_edit_price
+
                 edited_actual_price = st.number_input(
                     "Actual Price",
                     min_value=0.0,
                     step=0.01,
                     format="%.2f",
-                    value=default_edit_price,
-                    key=f"edit_sale_actual_price_{product_id}_{selected_sale_id}",
+                    value=st.session_state.edit_sale_actual_price,
+                    key=edit_product_key,
                 )
+                st.session_state.edit_sale_actual_price = edited_actual_price
                 edited_quantity = st.number_input("Quantity", min_value=1, step=1, value=int(selected_sale_row[12] if len(selected_sale_row) > 12 else 1))
                 edited_paid_amount = st.number_input(
                     "Amount Already Paid",
