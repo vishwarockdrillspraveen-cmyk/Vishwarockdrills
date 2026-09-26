@@ -88,7 +88,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("Vishwa Rock Drills")
+st.markdown(
+    """
+    <div style="padding: 0.4rem 0 1rem 0;">
+        <h1 style="margin: 0; color: #1f4e79; font-size: 2.4rem; font-weight: 800;">Vishwa Rock Drills</h1>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.sidebar.markdown("### Menu")
 main_menu_items = [
