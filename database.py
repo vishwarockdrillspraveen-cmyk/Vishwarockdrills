@@ -518,23 +518,93 @@ def get_customer_advances():
     return rows
 
 
+def add_customer_outstanding(customer_phone, customer_name, month_start, outstanding_amount, remarks=""):
+    clean_phone = str(customer_phone or "").strip()
+    if not clean_phone:
+        raise ValueError("Customer phone is required.")
+
+    valid_month = validate_date_value(month_start, "Outstanding Month")
+    clean_name = str(customer_name or "").strip() or clean_phone
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO customer_outstanding
+        (customer_phone, customer_name, month_start, outstanding_amount, remarks)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            clean_phone,
+            clean_name,
+            valid_month,
+            float(outstanding_amount or 0),
+            str(remarks or "").strip(),
+        ),
+    )
+    conn.commit()
+    outstanding_id = cursor.lastrowid
+    conn.close()
+    return outstanding_id
+
+
+def update_customer_outstanding(outstanding_id, customer_phone, customer_name, month_start, outstanding_amount, remarks=""):
+    clean_phone = str(customer_phone or "").strip()
+    if not clean_phone:
+        raise ValueError("Customer phone is required.")
+
+    valid_month = validate_date_value(month_start, "Outstanding Month")
+    clean_name = str(customer_name or "").strip() or clean_phone
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE customer_outstanding
+        SET customer_phone = ?,
+            customer_name = ?,
+            month_start = ?,
+            outstanding_amount = ?,
+            remarks = ?
+        WHERE outstanding_id = ?
+        """,
+        (
+            clean_phone,
+            clean_name,
+            valid_month,
+            float(outstanding_amount or 0),
+            str(remarks or "").strip(),
+            outstanding_id,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_customer_outstanding(outstanding_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM customer_outstanding WHERE outstanding_id = ?", (outstanding_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+
 def get_customer_outstanding():
     conn = get_connection()
     cursor = conn.cursor()
     rows = cursor.execute(
         """
         SELECT
-            c.phone,
-            c.customer_name,
-            COALESCE(SUM(s.pending_amount), 0) AS sales_outstanding,
-            COALESCE(SUM(CASE WHEN ca.payment_to = 'Us' THEN ca.amount_paid ELSE 0 END), 0) AS advances_received,
-            COALESCE(SUM(s.pending_amount), 0) - COALESCE(SUM(CASE WHEN ca.payment_to = 'Us' THEN ca.amount_paid ELSE 0 END), 0) AS outstanding_balance
-        FROM customers c
-        LEFT JOIN sales s ON s.customer_phone = c.phone
-        LEFT JOIN customer_advances ca ON ca.customer_phone = c.phone
-        GROUP BY c.phone, c.customer_name
-        HAVING COALESCE(SUM(s.pending_amount), 0) - COALESCE(SUM(CASE WHEN ca.payment_to = 'Us' THEN ca.amount_paid ELSE 0 END), 0) > 0
-        ORDER BY outstanding_balance DESC, c.customer_name
+            outstanding_id,
+            customer_phone,
+            customer_name,
+            month_start,
+            outstanding_amount,
+            remarks
+        FROM customer_outstanding
+        ORDER BY month_start DESC, customer_name
         """
     ).fetchall()
     conn.close()
@@ -1221,6 +1291,18 @@ def initialize_database():
     product_columns = [row[1] for row in cursor.fetchall()]
     if product_columns and "sale_price" not in product_columns:
         cursor.execute("ALTER TABLE products ADD COLUMN sale_price REAL NOT NULL DEFAULT 0")
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS customer_outstanding (
+        outstanding_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_phone TEXT NOT NULL,
+        customer_name TEXT NOT NULL,
+        month_start TEXT NOT NULL,
+        outstanding_amount REAL NOT NULL DEFAULT 0,
+        remarks TEXT,
+        FOREIGN KEY (customer_phone) REFERENCES customers(phone)
+    )
+    """)
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS sales (

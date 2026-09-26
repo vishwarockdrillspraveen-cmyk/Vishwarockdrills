@@ -4,8 +4,10 @@ from datetime import datetime
 from database import (
     add_company_advance,
     add_customer_advance,
+    add_customer_outstanding,
     delete_company_advance,
     delete_customer_advance,
+    delete_customer_outstanding,
     get_companies,
     get_company_advances,
     get_customer_advances,
@@ -13,6 +15,7 @@ from database import (
     get_customers,
     update_company_advance,
     update_customer_advance,
+    update_customer_outstanding,
     validate_date_value,
 )
 
@@ -312,25 +315,140 @@ def _render_customer_advances():
 
 def _render_customer_outstanding():
     st.subheader("Customer Outstanding")
-    rows = get_customer_outstanding()
-    if not rows:
-        st.info("No customer outstanding balances found.")
-        return
 
-    st.dataframe(
-        [
-            {
-                "Customer Phone": row[0],
-                "Customer Name": row[1],
-                "Sales Outstanding": float(row[2] or 0),
-                "Advances Received": float(row[3] or 0),
-                "Outstanding Balance": float(row[4] or 0),
-            }
-            for row in rows
-        ],
-        use_container_width=True,
-        hide_index=True,
-    )
+    if "customer_outstanding_action" not in st.session_state:
+        st.session_state.customer_outstanding_action = "Add Outstanding"
+
+    menu_options = ["Add Outstanding", "Edit Outstanding", "Delete Outstanding"]
+    left_col, right_col = st.columns([1.5, 4])
+
+    with left_col:
+        for option in menu_options:
+            if st.button(option, key=f"customer_outstanding_action_{option}", use_container_width=True):
+                st.session_state.customer_outstanding_action = option
+
+    with right_col:
+        selected_action = st.session_state.customer_outstanding_action
+        customers = get_customers()
+
+        if selected_action == "Add Outstanding":
+            if not customers:
+                st.info("No customers are available. Add a customer before entering outstanding values.")
+                return
+
+            with st.form("add_customer_outstanding_form", clear_on_submit=True):
+                customer = st.selectbox("Customer", [f"{row[1]} ({row[0]})" for row in customers])
+                customer_phone = next((row[0] for row in customers if f"{row[1]} ({row[0]})" == customer), customers[0][0])
+                customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
+                month_start = st.date_input("Month Start")
+                outstanding_amount = st.number_input("Outstanding Amount", min_value=0.0, step=0.01, format="%.2f")
+                remarks = st.text_input("Remarks")
+
+                submitted = st.form_submit_button("Save Outstanding")
+                if submitted:
+                    try:
+                        add_customer_outstanding(customer_phone, customer_name, month_start, outstanding_amount, remarks)
+                        st.success("Customer outstanding saved successfully")
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
+
+        elif selected_action == "Edit Outstanding":
+            rows = get_customer_outstanding()
+            if not rows:
+                st.info("No customer outstanding entries found.")
+                return
+
+            search_term = st.text_input("Search by customer or month", placeholder="Type customer name or month")
+            if search_term.strip() == "":
+                st.info("Enter a customer name or month to search")
+                return
+
+            filtered_rows = [
+                row for row in rows
+                if str(row[1]).lower().find(search_term.lower()) != -1
+                or str(row[2]).lower().find(search_term.lower()) != -1
+                or str(row[3]).lower().find(search_term.lower()) != -1
+            ]
+            if not filtered_rows:
+                st.info("No matching outstanding entry found.")
+                return
+
+            options = [f"{row[2]} ({row[1]}) - {row[3]} - ₹{float(row[4] or 0):,.2f}" for row in filtered_rows]
+            selected_label = st.selectbox("Matching outstanding entries", options)
+            selected_row = filtered_rows[options.index(selected_label)]
+            selected_id = selected_row[0]
+
+            with st.form("edit_customer_outstanding_form"):
+                customer = st.selectbox("Customer", [f"{row[1]} ({row[0]})" for row in customers], index=[f"{row[1]} ({row[0]})" for row in customers].index(f"{selected_row[2]} ({selected_row[1]})") if f"{selected_row[2]} ({selected_row[1]})" in [f"{row[1]} ({row[0]})" for row in customers] else 0)
+                customer_phone = next((row[0] for row in customers if f"{row[1]} ({row[0]})" == customer), customers[0][0])
+                customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
+                month_start = st.date_input("Month Start", value=datetime.strptime(selected_row[3], "%Y-%m-%d").date())
+                outstanding_amount = st.number_input("Outstanding Amount", min_value=0.0, step=0.01, format="%.2f", value=float(selected_row[4] or 0))
+                remarks = st.text_input("Remarks", value=str(selected_row[5] or ""))
+
+                submitted = st.form_submit_button("Update Outstanding")
+                if submitted:
+                    try:
+                        update_customer_outstanding(selected_id, customer_phone, customer_name, month_start, outstanding_amount, remarks)
+                        st.success("Customer outstanding updated successfully")
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
+
+        elif selected_action == "Delete Outstanding":
+            rows = get_customer_outstanding()
+            if not rows:
+                st.info("No customer outstanding entries found.")
+                return
+
+            search_term = st.text_input("Search by customer or month", placeholder="Type customer name or month")
+            if search_term.strip() == "":
+                st.info("Enter a customer name or month to search")
+                return
+
+            filtered_rows = [
+                row for row in rows
+                if str(row[1]).lower().find(search_term.lower()) != -1
+                or str(row[2]).lower().find(search_term.lower()) != -1
+                or str(row[3]).lower().find(search_term.lower()) != -1
+            ]
+            if not filtered_rows:
+                st.info("No matching outstanding entry found.")
+                return
+
+            options = [f"{row[2]} ({row[1]}) - {row[3]} - ₹{float(row[4] or 0):,.2f}" for row in filtered_rows]
+            selected_label = st.selectbox("Matching outstanding entries", options)
+            selected_row = filtered_rows[options.index(selected_label)]
+
+            st.warning(f"Are you sure you want to delete the outstanding entry for {selected_row[2]} for {selected_row[3]}?")
+            with st.form("delete_customer_outstanding_form"):
+                if st.form_submit_button("Delete This Outstanding"):
+                    delete_customer_outstanding(selected_row[0])
+                    st.success("Outstanding entry deleted")
+                    st.rerun()
+
+        st.markdown("### Customer Outstanding List")
+        rows = get_customer_outstanding()
+        if not rows:
+            st.info("No customer outstanding entries available.")
+            return
+
+        st.dataframe(
+            [
+                {
+                    "Outstanding ID": row[0],
+                    "Customer Phone": row[1],
+                    "Customer Name": row[2],
+                    "Month Start": row[3],
+                    "Outstanding Amount": float(row[4] or 0),
+                    "Remarks": row[5],
+                }
+                for row in rows
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def advances_page(menu_name="Company Advances"):
