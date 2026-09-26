@@ -518,6 +518,29 @@ def get_customer_advances():
     return rows
 
 
+def get_customer_outstanding():
+    conn = get_connection()
+    cursor = conn.cursor()
+    rows = cursor.execute(
+        """
+        SELECT
+            c.phone,
+            c.customer_name,
+            COALESCE(SUM(s.pending_amount), 0) AS sales_outstanding,
+            COALESCE(SUM(CASE WHEN ca.payment_to = 'Us' THEN ca.amount_paid ELSE 0 END), 0) AS advances_received,
+            COALESCE(SUM(s.pending_amount), 0) - COALESCE(SUM(CASE WHEN ca.payment_to = 'Us' THEN ca.amount_paid ELSE 0 END), 0) AS outstanding_balance
+        FROM customers c
+        LEFT JOIN sales s ON s.customer_phone = c.phone
+        LEFT JOIN customer_advances ca ON ca.customer_phone = c.phone
+        GROUP BY c.phone, c.customer_name
+        HAVING COALESCE(SUM(s.pending_amount), 0) - COALESCE(SUM(CASE WHEN ca.payment_to = 'Us' THEN ca.amount_paid ELSE 0 END), 0) > 0
+        ORDER BY outstanding_balance DESC, c.customer_name
+        """
+    ).fetchall()
+    conn.close()
+    return rows
+
+
 def _normalize_inventory_totals(qty_received, single_product_price):
     qty = float(qty_received or 0)
     unit_price = float(single_product_price or 0)

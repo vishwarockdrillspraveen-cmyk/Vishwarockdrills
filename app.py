@@ -159,7 +159,7 @@ elif menu == "Advances":
 
     with action_col:
         st.markdown("#### Advances")
-        for item in ["Company Advances", "Customer Advances"]:
+        for item in ["Company Advances", "Customer Advances", "Customer Outstanding"]:
             if st.button(item, key=f"advances_{item}", use_container_width=True):
                 st.session_state.advances_submenu = item
 

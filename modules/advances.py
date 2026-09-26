@@ -9,6 +9,7 @@ from database import (
     get_companies,
     get_company_advances,
     get_customer_advances,
+    get_customer_outstanding,
     get_customers,
     update_company_advance,
     update_customer_advance,
@@ -309,9 +310,34 @@ def _render_customer_advances():
         )
 
 
+def _render_customer_outstanding():
+    st.subheader("Customer Outstanding")
+    rows = get_customer_outstanding()
+    if not rows:
+        st.info("No customer outstanding balances found.")
+        return
+
+    st.dataframe(
+        [
+            {
+                "Customer Phone": row[0],
+                "Customer Name": row[1],
+                "Sales Outstanding": float(row[2] or 0),
+                "Advances Received": float(row[3] or 0),
+                "Outstanding Balance": float(row[4] or 0),
+            }
+            for row in rows
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
 def advances_page(menu_name="Company Advances"):
     st.header("Advances")
     if menu_name == "Company Advances":
         _render_company_advances()
+    elif menu_name == "Customer Outstanding":
+        _render_customer_outstanding()
     else:
         _render_customer_advances()
