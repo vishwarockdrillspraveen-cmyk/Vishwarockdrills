@@ -5,9 +5,9 @@ from database import (
     add_sale,
     delete_sale,
     get_customers,
-    get_inventory_products_for_sale,
     get_product_sale_price,
     get_product_warranty_details,
+    get_products,
     get_sales,
     update_sale,
     validate_date_value,
@@ -26,8 +26,8 @@ def _format_customer(customer_row):
     return f"{customer_row[1]} ({customer_row[0]})"
 
 
-def _format_inventory_row(row):
-    return f"{row[1]} ({row[2]}) - ID: {row[0]}"
+def _format_product_row(row):
+    return f"{row[2]} ({row[1]}) - ID: {row[0]}"
 
 
 def _get_customer_phone_from_label(label, customers):
@@ -37,9 +37,9 @@ def _get_customer_phone_from_label(label, customers):
     return ""
 
 
-def _get_inventory_row_from_label(label, inventory_rows):
-    for row in inventory_rows:
-        if _format_inventory_row(row) == label:
+def _get_product_row_from_label(label, product_rows):
+    for row in product_rows:
+        if _format_product_row(row) == label:
             return row
     return None
 
@@ -65,14 +65,14 @@ def sales_page():
         if selected_action == "Add Sale":
             st.subheader("Add Sale")
             customers = get_customers()
-            inventory_rows = get_inventory_products_for_sale()
+            product_rows = get_products()
 
             if not customers:
                 st.info("No existing customers found. Add a customer before recording a sale.")
                 return
 
-            if not inventory_rows:
-                st.info("No products are available in inventory. Add inventory first before creating a sale.")
+            if not product_rows:
+                st.info("No products are available. Add a product before creating a sale.")
                 return
 
             with st.form("add_sale_form", clear_on_submit=True):
@@ -90,22 +90,22 @@ def sales_page():
                 selected_customer_label = st.selectbox("Select Customer", customer_options)
                 customer_phone = _get_customer_phone_from_label(selected_customer_label, customers)
 
-                product_search = st.text_input("Search inventory product", placeholder="Type product name or company")
-                inventory_options = [_format_inventory_row(row) for row in inventory_rows]
+                product_search = st.text_input("Search product", placeholder="Type product name or company")
+                product_options = [_format_product_row(row) for row in product_rows]
                 if product_search.strip():
-                    inventory_options = [
-                        label for label in inventory_options
+                    product_options = [
+                        label for label in product_options
                         if product_search.lower() in label.lower()
                     ]
-                if not inventory_options:
-                    st.warning("No matching inventory product found. Please use a different search value.")
+                if not product_options:
+                    st.warning("No matching product found. Please use a different search value.")
                     st.stop()
 
-                selected_inventory_label = st.selectbox("Select Product from Inventory", inventory_options)
-                selected_inventory_row = _get_inventory_row_from_label(selected_inventory_label, inventory_rows)
-                product_id = selected_inventory_row[0]
-                product_name = selected_inventory_row[1]
-                product_company = selected_inventory_row[2]
+                selected_product_label = st.selectbox("Select Product", product_options)
+                selected_product_row = _get_product_row_from_label(selected_product_label, product_rows)
+                product_id = selected_product_row[0]
+                product_name = selected_product_row[2]
+                product_company = selected_product_row[1]
                 default_sale_price = get_product_sale_price(product_id)
 
                 st.markdown("### Sale Details")
@@ -203,21 +203,21 @@ def sales_page():
             customer_options = [_format_customer(row) for row in customers]
             customer_index = customer_options.index(_format_customer(next((c for c in customers if c[0] == selected_sale_row[1]), customers[0])))
 
-            inventory_rows = get_inventory_products_for_sale()
-            inventory_options = [_format_inventory_row(row) for row in inventory_rows]
+            product_rows = get_products()
+            product_options = [_format_product_row(row) for row in product_rows]
             product_index = 0
-            if str(selected_sale_row[2]) in [str(row[0]) for row in inventory_rows]:
-                product_index = [str(row[0]) for row in inventory_rows].index(str(selected_sale_row[2]))
+            if str(selected_sale_row[2]) in [str(row[0]) for row in product_rows]:
+                product_index = [str(row[0]) for row in product_rows].index(str(selected_sale_row[2]))
 
             with st.form("edit_sale_form"):
                 selected_customer_label = st.selectbox("Customer", customer_options, index=customer_index)
                 customer_phone = _get_customer_phone_from_label(selected_customer_label, customers)
 
-                selected_inventory_label = st.selectbox("Product from Inventory", inventory_options, index=product_index)
-                selected_inventory_row = _get_inventory_row_from_label(selected_inventory_label, inventory_rows)
-                product_id = selected_inventory_row[0]
-                product_name = selected_inventory_row[1]
-                product_company = selected_inventory_row[2]
+                selected_product_label = st.selectbox("Product", product_options, index=product_index)
+                selected_product_row = _get_product_row_from_label(selected_product_label, product_rows)
+                product_id = selected_product_row[0]
+                product_name = selected_product_row[2]
+                product_company = selected_product_row[1]
 
                 edited_sale_date = _safe_date_input(
                     "Sale Date",
@@ -246,7 +246,7 @@ def sales_page():
                 warranty_applicable = bool(selected_sale_row[9])
                 warranty_start_date = selected_sale_row[10]
                 warranty_end_date = selected_sale_row[11]
-                if selected_inventory_row:
+                if selected_product_row:
                     product_warranty_flag, product_size_mm, warranty_limit_mm = get_product_warranty_details(product_id)
                     if product_warranty_flag:
                         warranty_applicable = True
