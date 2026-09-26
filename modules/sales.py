@@ -114,17 +114,14 @@ def sales_page():
                     sale_date = _safe_date_input("Sale Date")
                     if sale_date is None:
                         st.stop()
-                    selected_product_key = str(product_id)
-                    if "current_sale_product_id" not in st.session_state or st.session_state.current_sale_product_id != selected_product_key:
-                        st.session_state.current_sale_product_id = selected_product_key
-                        st.session_state.sale_actual_price = float(default_sale_price or 0)
+                    actual_price_key = f"sale_actual_price_{product_id}"
                     actual_price = st.number_input(
                         "Actual Price",
                         min_value=0.0,
                         step=0.01,
                         format="%.2f",
-                        value=st.session_state.sale_actual_price,
-                        key="sale_actual_price_input"
+                        value=float(default_sale_price or 0),
+                        key=actual_price_key,
                     )
                     quantity = st.number_input("Quantity", min_value=1, step=1, value=1)
                 with sale_col2:
@@ -239,16 +236,14 @@ def sales_page():
                 if edited_sale_date is None:
                     st.stop()
 
-                if "current_edit_sale_product_id" not in st.session_state or st.session_state.current_edit_sale_product_id != str(product_id):
-                    st.session_state.current_edit_sale_product_id = str(product_id)
-                    st.session_state.edit_sale_actual_price = float(get_product_sale_price(product_id) or 0)
+                default_edit_price = float(selected_sale_row[6] or get_product_sale_price(product_id) or 0)
                 edited_actual_price = st.number_input(
                     "Actual Price",
                     min_value=0.0,
                     step=0.01,
                     format="%.2f",
-                    value=st.session_state.edit_sale_actual_price,
-                    key="edit_sale_actual_price_input"
+                    value=default_edit_price,
+                    key=f"edit_sale_actual_price_{product_id}_{selected_sale_id}",
                 )
                 edited_quantity = st.number_input("Quantity", min_value=1, step=1, value=int(selected_sale_row[12] if len(selected_sale_row) > 12 else 1))
                 edited_paid_amount = st.number_input(
