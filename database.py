@@ -741,24 +741,36 @@ def get_product_warranty_details(product_id):
 
 
 def add_sale(customer_phone, product_id, product_name, product_company, sale_date, actual_price, paid_amount, pending_amount,
-             warranty_applicable=False, warranty_start_date=None, warranty_end_date=None, quantity=1):
+             warranty_applicable=False, warranty_start_date=None, warranty_end_date=None, quantity=1, customer_name=None):
     valid_sale_date = validate_date_value(sale_date, "Sale Date")
     valid_warranty_start_date = validate_date_value(warranty_start_date, "Warranty Start Date") if warranty_applicable and warranty_start_date else None
     valid_warranty_end_date = validate_date_value(warranty_end_date, "Warranty End Date") if warranty_applicable and warranty_end_date else None
     valid_quantity = int(quantity or 1)
 
+    clean_phone = str(customer_phone or "").strip()
+    final_customer_name = str(customer_name or "").strip()
     conn = get_connection()
     cursor = conn.cursor()
+    if not final_customer_name:
+        customer_row = cursor.execute(
+            "SELECT customer_name FROM customers WHERE phone = ?",
+            (clean_phone,),
+        ).fetchone()
+        if customer_row:
+            final_customer_name = str(customer_row[0] or "").strip()
+    if not final_customer_name:
+        final_customer_name = clean_phone
 
     cursor.execute(
         """
         INSERT INTO sales
-        (customer_phone, product_id, product_name, product_company, sale_date, actual_price, paid_amount, pending_amount,
+        (customer_phone, customer_name, product_id, product_name, product_company, sale_date, actual_price, paid_amount, pending_amount,
          warranty_applicable, warranty_start_date, warranty_end_date, quantity)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            customer_phone.strip(),
+            clean_phone,
+            final_customer_name,
             str(product_id).strip(),
             product_name.strip(),
             product_company.strip(),
@@ -789,19 +801,31 @@ def add_sale(customer_phone, product_id, product_name, product_company, sale_dat
 
 
 def update_sale(sale_id, customer_phone, product_id, product_name, product_company, sale_date, actual_price, paid_amount,
-               pending_amount, warranty_applicable=False, warranty_start_date=None, warranty_end_date=None, quantity=1):
+               pending_amount, warranty_applicable=False, warranty_start_date=None, warranty_end_date=None, quantity=1, customer_name=None):
     valid_sale_date = validate_date_value(sale_date, "Sale Date")
     valid_warranty_start_date = validate_date_value(warranty_start_date, "Warranty Start Date") if warranty_applicable and warranty_start_date else None
     valid_warranty_end_date = validate_date_value(warranty_end_date, "Warranty End Date") if warranty_applicable and warranty_end_date else None
     valid_quantity = int(quantity or 1)
 
+    clean_phone = str(customer_phone or "").strip()
+    final_customer_name = str(customer_name or "").strip()
     conn = get_connection()
     cursor = conn.cursor()
+    if not final_customer_name:
+        customer_row = cursor.execute(
+            "SELECT customer_name FROM customers WHERE phone = ?",
+            (clean_phone,),
+        ).fetchone()
+        if customer_row:
+            final_customer_name = str(customer_row[0] or "").strip()
+    if not final_customer_name:
+        final_customer_name = clean_phone
 
     cursor.execute(
         """
         UPDATE sales
         SET customer_phone = ?,
+            customer_name = ?,
             product_id = ?,
             product_name = ?,
             product_company = ?,
@@ -816,7 +840,8 @@ def update_sale(sale_id, customer_phone, product_id, product_name, product_compa
         WHERE sale_id = ?
         """,
         (
-            customer_phone.strip(),
+            clean_phone,
+            final_customer_name,
             str(product_id).strip(),
             product_name.strip(),
             product_company.strip(),
@@ -864,6 +889,7 @@ def get_sales():
         SELECT
             sale_id,
             customer_phone,
+            customer_name,
             product_id,
             product_name,
             product_company,
@@ -1314,6 +1340,7 @@ def initialize_database():
     CREATE TABLE IF NOT EXISTS sales (
         sale_id INTEGER PRIMARY KEY AUTOINCREMENT,
         customer_phone TEXT NOT NULL,
+        customer_name TEXT NOT NULL DEFAULT '',
         product_id TEXT NOT NULL,
         product_name TEXT NOT NULL,
         product_company TEXT NOT NULL,
@@ -1324,12 +1351,15 @@ def initialize_database():
         warranty_applicable INTEGER NOT NULL DEFAULT 0,
         warranty_start_date TEXT,
         warranty_end_date TEXT,
+        quantity INTEGER NOT NULL DEFAULT 1,
         FOREIGN KEY (customer_phone) REFERENCES customers(phone)
     )
     """)
 
     cursor.execute("PRAGMA table_info(sales)")
     sales_columns = [row[1] for row in cursor.fetchall()]
+    if sales_columns and "customer_name" not in sales_columns:
+        cursor.execute("ALTER TABLE sales ADD COLUMN customer_name TEXT NOT NULL DEFAULT ''")
     if sales_columns and "quantity" not in sales_columns:
         cursor.execute("ALTER TABLE sales ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1")
 
@@ -1348,6 +1378,7 @@ def initialize_database():
         CREATE TABLE sales (
             sale_id INTEGER PRIMARY KEY AUTOINCREMENT,
             customer_phone TEXT NOT NULL,
+            customer_name TEXT NOT NULL DEFAULT '',
             product_id TEXT NOT NULL,
             product_name TEXT NOT NULL,
             product_company TEXT NOT NULL,
@@ -1397,6 +1428,15 @@ def initialize_database():
                 sale_id, product_id, sale_date, sale_price = row
                 customer_phone = ""
 
+            customer_name = ""
+            if customer_phone:
+                customer_name_row = cursor.execute(
+                    "SELECT customer_name FROM customers WHERE phone = ?",
+                    (customer_phone,),
+                ).fetchone()
+                if customer_name_row:
+                    customer_name = customer_name_row[0]
+
             product_name = ""
             product_company = ""
             product_row = cursor.execute(
@@ -1415,13 +1455,14 @@ def initialize_database():
             cursor.execute(
                 """
                 INSERT INTO sales
-                (sale_id, customer_phone, product_id, product_name, product_company, sale_date, actual_price, paid_amount,
-                 pending_amount, warranty_applicable, warranty_start_date, warranty_end_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0, NULL, NULL)
+                (sale_id, customer_phone, customer_name, product_id, product_name, product_company, sale_date, actual_price, paid_amount,
+                 pending_amount, warranty_applicable, warranty_start_date, warranty_end_date, quantity)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, NULL, NULL, 1)
                 """,
                 (
                     sale_id,
                     customer_phone,
+                    customer_name,
                     str(product_id),
                     product_name,
                     product_company,

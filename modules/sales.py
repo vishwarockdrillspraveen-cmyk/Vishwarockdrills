@@ -67,16 +67,17 @@ def sales_page():
                 [
                     {
                         "Sale ID": row[0],
-                        "Customer": row[1],
-                        "Product ID": row[2],
-                        "Product": row[3],
-                        "Company": row[4],
-                        "Date": row[5],
-                        "Sale Price": float(row[6] or 0),
-                        "Quantity": int(row[12] if len(row) > 12 else 1),
-                        "Total Value": float((row[6] or 0) * (row[12] if len(row) > 12 else 1)),
-                        "Paid": float(row[7] or 0),
-                        "Pending": float(row[8] or 0),
+                        "Customer Phone": row[1],
+                        "Customer Name": row[2],
+                        "Product ID": row[3],
+                        "Product": row[4],
+                        "Company": row[5],
+                        "Date": row[6],
+                        "Sale Price": float(row[7] or 0),
+                        "Quantity": int(row[13] if len(row) > 13 else 1),
+                        "Total Value": float((row[7] or 0) * (row[13] if len(row) > 13 else 1)),
+                        "Paid": float(row[8] or 0),
+                        "Pending": float(row[9] or 0),
                     }
                     for row in sales_rows
                 ],
@@ -116,6 +117,7 @@ def sales_page():
 
                 selected_customer_label = st.selectbox("Select Customer", customer_options)
                 customer_phone = _get_customer_phone_from_label(selected_customer_label, customers)
+                customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
 
                 product_search = st.text_input("Search product", placeholder="Type product name or company")
                 product_options = [_format_product_row(row) for row in product_rows]
@@ -192,6 +194,7 @@ def sales_page():
                                 warranty_start_date,
                                 warranty_end_date,
                                 quantity,
+                                customer_name,
                             )
                             st.success("Sale saved successfully")
                             st.rerun()
@@ -216,13 +219,15 @@ def sales_page():
                 or str(row[2]).lower().find(search_term.lower()) != -1
                 or str(row[3]).lower().find(search_term.lower()) != -1
                 or str(row[4]).lower().find(search_term.lower()) != -1
+                or str(row[5]).lower().find(search_term.lower()) != -1
+                or str(row[6]).lower().find(search_term.lower()) != -1
             ]
 
             if not filtered_rows:
                 st.info("No matching sale found")
                 return
 
-            sale_options = [f"{row[3]} ({row[1]}) - {row[5]}" for row in filtered_rows]
+            sale_options = [f"{row[2]} ({row[1]}) - {row[4]} - {row[6]}" for row in filtered_rows]
             selected_sale_label = st.selectbox("Matching sales", sale_options)
             selected_sale_row = filtered_rows[sale_options.index(selected_sale_label)]
             selected_sale_id = selected_sale_row[0]
@@ -234,12 +239,13 @@ def sales_page():
             product_rows = get_products()
             product_options = [_format_product_row(row) for row in product_rows]
             product_index = 0
-            if str(selected_sale_row[2]) in [str(row[0]) for row in product_rows]:
-                product_index = [str(row[0]) for row in product_rows].index(str(selected_sale_row[2]))
+            if str(selected_sale_row[3]) in [str(row[0]) for row in product_rows]:
+                product_index = [str(row[0]) for row in product_rows].index(str(selected_sale_row[3]))
 
             with st.form("edit_sale_form"):
                 selected_customer_label = st.selectbox("Customer", customer_options, index=customer_index)
                 customer_phone = _get_customer_phone_from_label(selected_customer_label, customers)
+                customer_name = next((row[1] for row in customers if row[0] == customer_phone), selected_sale_row[2] or "")
 
                 selected_product_label = st.selectbox("Product", product_options, index=product_index)
                 selected_product_row = _get_product_row_from_label(selected_product_label, product_rows)
@@ -249,20 +255,20 @@ def sales_page():
 
                 edited_sale_date = _safe_date_input(
                     "Sale Date",
-                    value=datetime.strptime(selected_sale_row[5], "%Y-%m-%d").date()
+                    value=datetime.strptime(selected_sale_row[6], "%Y-%m-%d").date()
                 )
                 if edited_sale_date is None:
                     st.stop()
 
-                default_edit_price = float(get_product_sale_price(product_id) or selected_sale_row[6] or 0)
+                default_edit_price = float(get_product_sale_price(product_id) or selected_sale_row[7] or 0)
                 edited_actual_price = default_edit_price
-                edited_quantity = st.number_input("Quantity", min_value=1, step=1, value=int(selected_sale_row[12] if len(selected_sale_row) > 12 else 1))
-                edited_paid_amount = float(selected_sale_row[7] or 0)
+                edited_quantity = st.number_input("Quantity", min_value=1, step=1, value=int(selected_sale_row[13] if len(selected_sale_row) > 13 else 1))
+                edited_paid_amount = float(selected_sale_row[8] or 0)
                 edited_pending_amount = max(edited_actual_price - edited_paid_amount, 0.0)
 
-                warranty_applicable = bool(selected_sale_row[9])
-                warranty_start_date = selected_sale_row[10]
-                warranty_end_date = selected_sale_row[11]
+                warranty_applicable = bool(selected_sale_row[10])
+                warranty_start_date = selected_sale_row[11]
+                warranty_end_date = selected_sale_row[12]
                 if selected_product_row:
                     product_warranty_flag, product_size_mm, warranty_limit_mm = get_product_warranty_details(product_id)
                     if product_warranty_flag:
@@ -298,6 +304,7 @@ def sales_page():
                             warranty_start_date,
                             warranty_end_date,
                             edited_quantity,
+                            customer_name,
                         )
                         st.success("Sale updated successfully")
                         st.rerun()
@@ -322,17 +329,19 @@ def sales_page():
                 or str(row[2]).lower().find(search_term.lower()) != -1
                 or str(row[3]).lower().find(search_term.lower()) != -1
                 or str(row[4]).lower().find(search_term.lower()) != -1
+                or str(row[5]).lower().find(search_term.lower()) != -1
+                or str(row[6]).lower().find(search_term.lower()) != -1
             ]
 
             if not filtered_rows:
                 st.info("No matching sale found")
                 return
 
-            sale_options = [f"{row[3]} ({row[1]}) - {row[5]}" for row in filtered_rows]
+            sale_options = [f"{row[2]} ({row[1]}) - {row[4]} - {row[6]}" for row in filtered_rows]
             selected_sale_label = st.selectbox("Matching sales", sale_options)
             selected_sale_row = filtered_rows[sale_options.index(selected_sale_label)]
 
-            st.warning(f"Are you sure you want to delete the sale for {selected_sale_row[3]} ({selected_sale_row[1]})?")
+            st.warning(f"Are you sure you want to delete the sale for {selected_sale_row[2]} ({selected_sale_row[1]})?")
             with st.form("delete_sale_form"):
                 delete_submitted = st.form_submit_button("Delete This Sale")
                 if delete_submitted:
