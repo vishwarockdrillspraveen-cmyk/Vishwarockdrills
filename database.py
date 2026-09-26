@@ -1,5 +1,14 @@
+import os
 import sqlite3
 from datetime import datetime, timedelta
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+DB_DIR = BASE_DIR / "database"
+DB_PATH = DB_DIR / "warranty.db"
+
+if not DB_DIR.exists():
+    DB_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def get_timestamp():
@@ -43,7 +52,9 @@ def delete_customer(phone):
 
 
 def get_connection():
-    return sqlite3.connect("database/warranty.db")
+    if not DB_DIR.exists():
+        DB_DIR.mkdir(parents=True, exist_ok=True)
+    return sqlite3.connect(str(DB_PATH))
 
 
 def add_customer(customer_name, phone, email):
