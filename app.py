@@ -11,6 +11,82 @@ st.set_page_config(
     layout="wide"
 )
 
+st.markdown(
+    """
+    <style>
+    :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --panel-2: #1f2937;
+        --primary: #f59e0b;
+        --primary-soft: #fbbf24;
+        --text: #f8fafc;
+        --muted: #cbd5e1;
+        --border: rgba(255,255,255,0.08);
+    }
+
+    .stApp {
+        background: linear-gradient(135deg, #0b1120 0%, #111827 100%);
+        color: var(--text);
+    }
+
+    .stApp > div {
+        background: transparent;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        color: var(--primary-soft) !important;
+    }
+
+    .stSidebar {
+        background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+        border-right: 1px solid var(--border);
+    }
+
+    .stSidebar .block-container {
+        padding-top: 1rem;
+    }
+
+    .stButton > button {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-soft) 100%);
+        color: #111827;
+        border: none;
+        border-radius: 0.75rem;
+        font-weight: 700;
+        transition: 0.2s ease;
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 18px rgba(245, 158, 11, 0.25);
+    }
+
+    div[data-testid="stForm"] {
+        background: rgba(17, 24, 39, 0.8);
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        padding: 1rem;
+    }
+
+    .stDataFrame, .stTable {
+        border-radius: 0.75rem;
+        overflow: hidden;
+    }
+
+    [data-testid="stMetric"] {
+        background: rgba(31, 41, 55, 0.9);
+        border: 1px solid var(--border);
+        border-radius: 0.75rem;
+    }
+
+    .stAlert, .stSuccess, .stInfo, .stWarning, .stError {
+        border-radius: 0.75rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("Vishwa Rock Drills")
 
 st.sidebar.markdown("### Menu")
