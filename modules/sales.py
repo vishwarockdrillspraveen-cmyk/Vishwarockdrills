@@ -1,3 +1,5 @@
+import csv
+import io
 import streamlit as st
 from datetime import datetime, timedelta
 
@@ -63,26 +65,54 @@ def sales_page():
         sales_rows = get_sales()
         st.markdown("### Stored Sales")
         if sales_rows:
+            sales_display_rows = [
+                {
+                    "Sale ID": row[0],
+                    "Customer Phone": row[1],
+                    "Customer Name": row[2],
+                    "Product ID": row[3],
+                    "Product": row[4],
+                    "Company": row[5],
+                    "Date": row[6],
+                    "Sale Price": float(row[7] or 0),
+                    "Quantity": int(row[13] if len(row) > 13 else 1),
+                    "Total Value": float((row[7] or 0) * (row[13] if len(row) > 13 else 1)),
+                    "Paid": float(row[8] or 0),
+                    "Pending": float(row[9] or 0),
+                }
+                for row in sales_rows
+            ]
             st.dataframe(
-                [
-                    {
-                        "Sale ID": row[0],
-                        "Customer Phone": row[1],
-                        "Customer Name": row[2],
-                        "Product ID": row[3],
-                        "Product": row[4],
-                        "Company": row[5],
-                        "Date": row[6],
-                        "Sale Price": float(row[7] or 0),
-                        "Quantity": int(row[13] if len(row) > 13 else 1),
-                        "Total Value": float((row[7] or 0) * (row[13] if len(row) > 13 else 1)),
-                        "Paid": float(row[8] or 0),
-                        "Pending": float(row[9] or 0),
-                    }
-                    for row in sales_rows
-                ],
+                sales_display_rows,
                 use_container_width=True,
                 hide_index=True,
+            )
+
+            csv_buffer = io.StringIO()
+            fieldnames = [
+                "Sale ID",
+                "Customer Phone",
+                "Customer Name",
+                "Product ID",
+                "Product",
+                "Company",
+                "Date",
+                "Sale Price",
+                "Quantity",
+                "Total Value",
+                "Paid",
+                "Pending",
+            ]
+            writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(sales_display_rows)
+
+            st.download_button(
+                label="Download Sales CSV",
+                data=csv_buffer.getvalue(),
+                file_name="sales_details.csv",
+                mime="text/csv",
+                use_container_width=True,
             )
         else:
             st.info("No sales stored in backend yet.")

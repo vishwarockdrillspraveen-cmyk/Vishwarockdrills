@@ -5,6 +5,7 @@ from database import (
     add_company_advance,
     add_customer_advance,
     add_customer_outstanding,
+    add_customer_payment,
     delete_company_advance,
     delete_customer_advance,
     delete_customer_outstanding,
@@ -12,6 +13,7 @@ from database import (
     get_company_advances,
     get_customer_advances,
     get_customer_outstanding,
+    get_customer_report,
     get_customers,
     update_company_advance,
     update_customer_advance,
@@ -451,11 +453,87 @@ def _render_customer_outstanding():
         )
 
 
+def _render_customer_report():
+    st.subheader("Customer Report")
+    rows = get_customer_report()
+    if not rows:
+        st.info("No customer data available to report.")
+        return
+
+    st.dataframe(
+        [
+            {
+                "Customer Phone": row[0],
+                "Customer Name": row[1],
+                "Opening/Manual Outstanding": float(row[2] or 0),
+                "Sales Outstanding": float(row[3] or 0),
+                "Total Outstanding": float(row[4] or 0),
+            }
+            for row in rows
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+def _render_payments():
+    st.subheader("Payments")
+    customers = get_customers()
+    if not customers:
+        st.info("No customers available. Add a customer before entering payments.")
+        return
+
+    with st.form("customer_payment_form", clear_on_submit=True):
+        customer = st.selectbox("Customer", [f"{row[1]} ({row[0]})" for row in customers])
+        customer_phone = next((row[0] for row in customers if f"{row[1]} ({row[0]})" == customer), customers[0][0])
+        customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
+        payment_date = _safe_date_field("Payment Date")
+        amount_paid = st.number_input("Amount Paid", min_value=0.0, step=0.01, format="%.2f")
+        payment_mode = st.selectbox("Payment Mode", PAYMENT_MODES)
+        transaction_details = st.text_input("Transaction Details", placeholder="UPI ID, bank ref, cheque no., etc.")
+        remarks = st.text_input("Remarks")
+
+        submitted = st.form_submit_button("Save Payment")
+        if submitted:
+            try:
+                add_customer_payment(customer_phone, customer_name, payment_date, amount_paid, payment_mode, transaction_details, remarks)
+                st.success("Payment recorded and outstanding updated automatically")
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+
+    st.markdown("### Payment Entries")
+    payment_rows = get_customer_outstanding()
+    if not payment_rows:
+        st.info("No payment or outstanding entries recorded yet.")
+        return
+
+    st.dataframe(
+        [
+            {
+                "Outstanding ID": row[0],
+                "Customer Phone": row[1],
+                "Customer Name": row[2],
+                "Date": row[3],
+                "Amount": float(row[4] or 0),
+                "Remarks": row[5],
+            }
+            for row in payment_rows
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
 def advances_page(menu_name="Company Advances"):
     st.header("Advances")
     if menu_name == "Company Advances":
         _render_company_advances()
     elif menu_name == "Customer Outstanding":
         _render_customer_outstanding()
+    elif menu_name == "Customer Report":
+        _render_customer_report()
+    elif menu_name == "Payments":
+        _render_payments()
     else:
         _render_customer_advances()

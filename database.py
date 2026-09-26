@@ -611,6 +611,76 @@ def get_customer_outstanding():
     return rows
 
 
+def add_customer_payment(customer_phone, customer_name, payment_date, amount_paid, payment_mode="Cash", transaction_details="", remarks=""):
+    clean_phone = str(customer_phone or "").strip()
+    if not clean_phone:
+        raise ValueError("Customer phone is required.")
+
+    valid_date = validate_date_value(payment_date, "Payment Date")
+    payment_amount = float(amount_paid or 0)
+    if payment_amount <= 0:
+        raise ValueError("Payment amount must be greater than zero.")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    clean_name = str(customer_name or "").strip() or clean_phone
+
+    if payment_mode != "Cash" and str(transaction_details or "").strip() == "":
+        conn.close()
+        raise ValueError("Transaction Details is required for non-cash payment modes.")
+
+    cursor.execute(
+        """
+        INSERT INTO customer_outstanding
+        (customer_phone, customer_name, month_start, outstanding_amount, remarks)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            clean_phone,
+            clean_name,
+            valid_date,
+            -payment_amount,
+            f"Payment: {remarks or payment_mode} | {transaction_details or 'Cash'}",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def get_customer_report():
+    conn = get_connection()
+    cursor = conn.cursor()
+    rows = cursor.execute(
+        """
+        SELECT
+            c.phone,
+            c.customer_name,
+            COALESCE(so.manual_outstanding, 0) AS manual_outstanding,
+            COALESCE(s.sales_outstanding, 0) AS sales_outstanding,
+            COALESCE(so.manual_outstanding, 0) + COALESCE(s.sales_outstanding, 0) AS total_outstanding
+        FROM customers c
+        LEFT JOIN (
+            SELECT
+                customer_phone,
+                SUM(outstanding_amount) AS manual_outstanding
+            FROM customer_outstanding
+            GROUP BY customer_phone
+        ) so ON so.customer_phone = c.phone
+        LEFT JOIN (
+            SELECT
+                customer_phone,
+                SUM(pending_amount) AS sales_outstanding
+            FROM sales
+            GROUP BY customer_phone
+        ) s ON s.customer_phone = c.phone
+        ORDER BY total_outstanding DESC, c.customer_name
+        """
+    ).fetchall()
+    conn.close()
+    return rows
+
+
 def _normalize_inventory_totals(qty_received, single_product_price):
     qty = float(qty_received or 0)
     unit_price = float(single_product_price or 0)
