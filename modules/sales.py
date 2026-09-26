@@ -60,6 +60,33 @@ def sales_page():
                 st.session_state.sales_action = option
 
     with content_col:
+        sales_rows = get_sales()
+        st.markdown("### Stored Sales")
+        if sales_rows:
+            st.dataframe(
+                [
+                    {
+                        "Sale ID": row[0],
+                        "Customer": row[1],
+                        "Product ID": row[2],
+                        "Product": row[3],
+                        "Company": row[4],
+                        "Date": row[5],
+                        "Sale Price": float(row[6] or 0),
+                        "Quantity": int(row[12] if len(row) > 12 else 1),
+                        "Total Value": float((row[6] or 0) * (row[12] if len(row) > 12 else 1)),
+                        "Paid": float(row[7] or 0),
+                        "Pending": float(row[8] or 0),
+                    }
+                    for row in sales_rows
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("No sales stored in backend yet.")
+
+        st.markdown("---")
         selected_action = st.session_state.sales_action
 
         if selected_action == "Add Sale":
