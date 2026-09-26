@@ -108,29 +108,18 @@ def sales_page():
                 product_company = selected_product_row[1]
                 default_sale_price = float(get_product_sale_price(product_id) or 0)
 
-                sale_product_key = f"sale_product_{product_id}"
-                if "current_sale_product_id" not in st.session_state or str(st.session_state.current_sale_product_id) != str(product_id):
-                    st.session_state.current_sale_product_id = str(product_id)
-                    st.session_state.sale_actual_price = default_sale_price
-
                 st.markdown("### Sale Details")
                 sale_col1, sale_col2 = st.columns(2)
                 with sale_col1:
                     sale_date = _safe_date_input("Sale Date")
                     if sale_date is None:
                         st.stop()
-                    actual_price = st.number_input(
-                        "Actual Price",
-                        min_value=0.0,
-                        step=0.01,
-                        format="%.2f",
-                        value=st.session_state.sale_actual_price,
-                        key=sale_product_key,
-                    )
-                    st.session_state.sale_actual_price = actual_price
+                    actual_price = default_sale_price
                     quantity = st.number_input("Quantity", min_value=1, step=1, value=1)
+                    st.text_input("Sale Price (Auto)", value=f"{actual_price:.2f}", disabled=True)
+                    st.text_input("Total Sale Value", value=f"{actual_price * quantity:.2f}", disabled=True)
                 with sale_col2:
-                    paid_amount = st.number_input("Amount Already Paid", min_value=0.0, step=0.01, format="%.2f")
+                    paid_amount = 0.0
                     pending_amount = max(actual_price - paid_amount, 0.0)
                     st.text_input("Pending Amount", value=f"{pending_amount:.2f}", disabled=True)
 
@@ -241,30 +230,13 @@ def sales_page():
                 if edited_sale_date is None:
                     st.stop()
 
-                edit_product_key = f"edit_sale_product_{selected_sale_id}_{product_id}"
-                default_edit_price = float(selected_sale_row[6] or get_product_sale_price(product_id) or 0)
-                if "current_edit_sale_product_id" not in st.session_state or str(st.session_state.current_edit_sale_product_id) != f"{selected_sale_id}_{product_id}":
-                    st.session_state.current_edit_sale_product_id = f"{selected_sale_id}_{product_id}"
-                    st.session_state.edit_sale_actual_price = default_edit_price
-
-                edited_actual_price = st.number_input(
-                    "Actual Price",
-                    min_value=0.0,
-                    step=0.01,
-                    format="%.2f",
-                    value=st.session_state.edit_sale_actual_price,
-                    key=edit_product_key,
-                )
-                st.session_state.edit_sale_actual_price = edited_actual_price
+                default_edit_price = float(get_product_sale_price(product_id) or selected_sale_row[6] or 0)
+                edited_actual_price = default_edit_price
                 edited_quantity = st.number_input("Quantity", min_value=1, step=1, value=int(selected_sale_row[12] if len(selected_sale_row) > 12 else 1))
-                edited_paid_amount = st.number_input(
-                    "Amount Already Paid",
-                    min_value=0.0,
-                    step=0.01,
-                    format="%.2f",
-                    value=float(selected_sale_row[7] or 0),
-                )
+                edited_paid_amount = float(selected_sale_row[7] or 0)
                 edited_pending_amount = max(edited_actual_price - edited_paid_amount, 0.0)
+                st.text_input("Sale Price (Auto)", value=f"{edited_actual_price:.2f}", disabled=True)
+                st.text_input("Total Sale Value", value=f"{edited_actual_price * edited_quantity:.2f}", disabled=True)
                 st.text_input("Pending Amount", value=f"{edited_pending_amount:.2f}", disabled=True)
 
                 warranty_applicable = bool(selected_sale_row[9])
