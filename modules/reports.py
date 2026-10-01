@@ -21,6 +21,13 @@ def _as_date(value):
     return date.fromisoformat(str(value)[:10])
 
 
+def _format_report_date(value):
+    try:
+        return _as_date(value).strftime("%d-%m-%Y")
+    except (TypeError, ValueError):
+        return str(value or "")
+
+
 def _within_range(value, start_date, end_date):
     try:
         record_date = _as_date(value)
@@ -66,6 +73,34 @@ def _fit_report_text(draw, value, font, max_width):
     while text and draw.textlength(text + "...", font=font) > max_width:
         text = text[:-1]
     return text + "..."
+
+
+def _wrap_report_text(draw, value, font, max_width):
+    words = str(value or "").split()
+    if not words:
+        return [""]
+
+    lines = []
+    current_line = ""
+    for word in words:
+        candidate = f"{current_line} {word}".strip()
+        if draw.textlength(candidate, font=font) <= max_width:
+            current_line = candidate
+            continue
+
+        if current_line:
+            lines.append(current_line)
+        current_line = ""
+        for character in word:
+            candidate = current_line + character
+            if draw.textlength(candidate, font=font) > max_width and current_line:
+                lines.append(current_line)
+                current_line = character
+            else:
+                current_line = candidate
+    if current_line:
+        lines.append(current_line)
+    return lines
 
 
 def _build_report_ledger(export_rows):
@@ -156,83 +191,95 @@ def _build_report_ledger(export_rows):
 
 
 def _build_report_jpg(start_date, end_date, selected_customer_names, export_rows):
-    width = 1800
-    margin = 64
+    width = 900
+    margin = 36
     content_width = width - (margin * 2)
     transactions, total_debit, total_credit, balance = _build_report_ledger(export_rows)
-    row_height = 46
-    header_height = 50
-    height = 250 + (max(len(transactions), 1) * row_height) + header_height + 92
+    title_font = _report_font(38, bold=True)
+    subtitle_font = _report_font(24)
+    transaction_font = _report_font(29, bold=True)
+    detail_font = _report_font(28)
+    amount_label_font = _report_font(19, bold=True)
+    amount_font = _report_font(28, bold=True)
+    total_font = _report_font(24, bold=True)
+
+    card_layouts = []
+    measure_draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+    for transaction in transactions:
+        detail_lines = _wrap_report_text(measure_draw, transaction["Details"], detail_font, content_width - 44)
+        details_height = max(len(detail_lines), 1) * 38
+        card_height = 54 + details_height + 12 + 74 + 18
+        card_layouts.append((transaction, detail_lines, card_height))
+
+    header_height = 150
+    totals_height = 118
+    content_gap = 14
+    ledger_height = sum(card[2] + content_gap for card in card_layouts) if card_layouts else 78 + content_gap
+    height = max(1200, 40 + header_height + 22 + ledger_height + totals_height + 40)
     image = Image.new("RGB", (width, height), "#F3F6F4")
     draw = ImageDraw.Draw(image)
-    title_font = _report_font(38, bold=True)
-    subtitle_font = _report_font(19)
-    header_font = _report_font(15, bold=True)
-    row_font = _report_font(15)
-    total_font = _report_font(16, bold=True)
 
-    draw.rounded_rectangle((margin, 36, width - margin, 150), radius=14, fill="#FFFFFF", outline="#D8E2DD", width=2)
+    draw.rounded_rectangle((margin, 28, width - margin, 28 + header_height), radius=16, fill="#FFFFFF", outline="#D8E2DD", width=2)
     title_text = ", ".join(str(name) for name in selected_customer_names)
     draw.text(
-        (margin + 28, 52),
-        _fit_report_text(draw, title_text, title_font, content_width - 56),
+        (margin + 24, 48),
+        _fit_report_text(draw, title_text, title_font, content_width - 48),
         font=title_font,
         fill="#174F50",
     )
     draw.text(
-        (margin + 30, 112),
-        f"Date range: {start_date.isoformat()} to {end_date.isoformat()}",
+        (margin + 24, 112),
+        f"Date range: {_format_report_date(start_date)} to {_format_report_date(end_date)}",
         font=subtitle_font,
         fill="#52615D",
     )
 
-    headers = ["Date", "Transaction", "Reference", "Details", "Debit", "Credit", "Balance"]
-    base_widths = [135, 200, 105, 590, 200, 200, 232]
-    width_scale = content_width / sum(base_widths)
-    column_widths = [int(column_width * width_scale) for column_width in base_widths]
-    column_widths[-1] += content_width - sum(column_widths)
-    y = 180
-    draw.rectangle((margin, y, width - margin, y + header_height), fill="#17666B")
-    x = margin
-    for header, column_width in zip(headers, column_widths):
-        draw.text((x + 9, y + 17), _fit_report_text(draw, header, header_font, column_width - 16), font=header_font, fill="#FFFFFF")
-        x += column_width
-    y += header_height
-
-    if transactions:
-        for row_index, transaction in enumerate(transactions):
+    y = 28 + header_height + 22
+    if card_layouts:
+        for row_index, (transaction, detail_lines, card_height) in enumerate(card_layouts):
+            card_bottom = y + card_height
             background = "#FFFFFF" if row_index % 2 == 0 else "#EAF0ED"
-            draw.rectangle((margin, y, width - margin, y + row_height), fill=background)
-            values = [
-                transaction["Date"],
-                transaction["Type"],
-                transaction["Reference"],
-                transaction["Details"],
-                f"{transaction['Debit']:,.2f}" if transaction["Debit"] else "-",
-                f"{transaction['Credit']:,.2f}" if transaction["Credit"] else "-",
-                f"{transaction['Balance']:,.2f}",
-            ]
-            x = margin
-            for value, column_width in zip(values, column_widths):
-                fitted_value = _fit_report_text(draw, value, row_font, column_width - 16)
-                draw.text((x + 9, y + 15), fitted_value, font=row_font, fill="#202B2A")
-                x += column_width
-            y += row_height
-    else:
-        draw.rectangle((margin, y, width - margin, y + row_height), fill="#FFFFFF")
-        draw.text((margin + 12, y + 15), "No transactions in this date range.", font=row_font, fill="#52615D")
-        y += row_height
+            draw.rounded_rectangle((margin, y, width - margin, card_bottom), radius=12, fill=background, outline="#D8E2DD", width=1)
+            headline = f"{_format_report_date(transaction['Date'])}  |  {transaction['Type']}  |  Ref {transaction['Reference']}"
+            draw.text((margin + 20, y + 17), _fit_report_text(draw, headline, transaction_font, content_width - 40), font=transaction_font, fill="#174F50")
 
-    y += 8
-    draw.rectangle((margin, y, width - margin, y + 52), fill="#DDE9E3")
-    footer_values = ["TOTAL", "", "", "", f"{total_debit:,.2f}", f"{total_credit:,.2f}", f"{balance:,.2f}"]
-    x = margin
-    for value, column_width in zip(footer_values, column_widths):
-        draw.text((x + 9, y + 17), _fit_report_text(draw, value, total_font, column_width - 16), font=total_font, fill="#174F50")
-        x += column_width
+            detail_y = y + 56
+            for detail_line in detail_lines:
+                draw.text((margin + 20, detail_y), detail_line, font=detail_font, fill="#35413E")
+                detail_y += 38
+
+            amount_y = detail_y + 12
+            amount_width = (content_width - 40) // 3
+            amount_cells = [
+                ("DEBIT", transaction["Debit"]),
+                ("CREDIT", transaction["Credit"]),
+                ("BALANCE", transaction["Balance"]),
+            ]
+            for cell_index, (label, amount) in enumerate(amount_cells):
+                cell_x = margin + 20 + cell_index * amount_width
+                draw.text((cell_x, amount_y), label, font=amount_label_font, fill="#52615D")
+                draw.text((cell_x, amount_y + 26), f"{amount:,.2f}" if amount else "-", font=amount_font, fill="#202B2A")
+            y = card_bottom + content_gap
+    else:
+        draw.rounded_rectangle((margin, y, width - margin, y + 78), radius=12, fill="#FFFFFF", outline="#D8E2DD", width=1)
+        draw.text((margin + 20, y + 24), "No transactions in this date range.", font=detail_font, fill="#52615D")
+        y += 78 + content_gap
+
+    draw.rounded_rectangle((margin, y, width - margin, y + totals_height), radius=14, fill="#DDE9E3", outline="#BDD0C7", width=2)
+    draw.text((margin + 20, y + 15), "TOTALS", font=total_font, fill="#174F50")
+    total_labels = [
+        ("DEBIT", total_debit),
+        ("CREDIT", total_credit),
+        ("CLOSING BALANCE", balance),
+    ]
+    amount_width = (content_width - 40) // 3
+    for cell_index, (label, amount) in enumerate(total_labels):
+        cell_x = margin + 20 + cell_index * amount_width
+        draw.text((cell_x, y + 52), label, font=amount_label_font, fill="#52615D")
+        draw.text((cell_x, y + 78), f"{amount:,.2f}", font=amount_font, fill="#174F50")
 
     output = io.BytesIO()
-    image.save(output, format="JPEG", quality=92, optimize=True)
+    image.save(output, format="JPEG", quality=96, subsampling=0, optimize=True)
     return output.getvalue()
 
 
@@ -308,7 +355,7 @@ def customer_reports_page():
     sales_pending = sum(float(row[9] or 0) for row in sales)
     warranty_total = sum(float(row[8] or 0) for row in warranty_claims)
 
-    st.caption(f"Reporting period: {start_date.isoformat()} to {end_date.isoformat()}")
+    st.caption(f"Reporting period: {_format_report_date(start_date)} to {_format_report_date(end_date)}")
     summary_rows = [
         ("Customer advances", advance_total),
         ("Payments received (ledger)", payment_total),
@@ -552,7 +599,7 @@ def customer_reports_page():
     activity_rows = [
         {
             "Type": "Customer advance",
-            "Date": row[5],
+            "Date": _format_report_date(row[5]),
             "Customer": row[2],
             "Phone": row[1],
             "Paid to": row[4],
@@ -566,7 +613,7 @@ def customer_reports_page():
     activity_rows.extend(
         {
             "Type": "Payment received",
-            "Date": row[3],
+            "Date": _format_report_date(row[3]),
             "Customer": row[2],
             "Phone": row[1],
             "Paid to": "Business",
@@ -586,7 +633,7 @@ def customer_reports_page():
             [
                 {
                     "Entry ID": row[0],
-                    "Date": row[3],
+                    "Date": _format_report_date(row[3]),
                     "Customer": row[2],
                     "Phone": row[1],
                     "Outstanding amount": float(row[4] or 0),
@@ -602,7 +649,7 @@ def customer_reports_page():
             [
                 {
                     "Sale ID": row[0],
-                    "Date": row[6],
+                    "Date": _format_report_date(row[6]),
                     "Customer": row[2],
                     "Phone": row[1],
                     "Product": row[4],
@@ -623,7 +670,7 @@ def customer_reports_page():
             [
                 {
                     "Claim ID": row[0],
-                    "Date": row[9],
+                    "Date": _format_report_date(row[9]),
                     "Customer": row[11] or "Not recorded",
                     "Phone": row[10] or "Not recorded",
                     "Product": row[2],
