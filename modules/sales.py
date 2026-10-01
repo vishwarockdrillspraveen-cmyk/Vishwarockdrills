@@ -30,7 +30,8 @@ def _format_customer(customer_row):
 
 
 def _format_product_row(row):
-    return f"{row[2]} ({row[1]}) - ID: {row[0]}"
+    sold_by_name = str(row[3] or "Not set").strip()
+    return f"{row[2]} ({row[1]}) - Sold by: {sold_by_name} - ID: {row[0]}"
 
 
 def _get_customer_phone_from_label(label, customers):
