@@ -167,15 +167,15 @@ def _build_report_jpg(start_date, end_date, selected_customer_names, export_rows
     margin = 64
     content_width = width - (margin * 2)
     transactions, total_debit, total_credit, balance = _build_report_ledger(export_rows)
-    title_font = _report_font(42, bold=True)
-    subtitle_font = _report_font(25)
-    header_font = _report_font(20, bold=True)
-    row_font = _report_font(21)
-    amount_font = _report_font(27, bold=True)
-    total_font = _report_font(29, bold=True)
-    header_height = 58
-    row_height = 66
-    totals_height = 76
+    title_font = _report_font(48, bold=True)
+    subtitle_font = _report_font(29)
+    header_font = _report_font(24, bold=True)
+    row_font = _report_font(25)
+    amount_font = _report_font(32, bold=True)
+    total_font = _report_font(34, bold=True)
+    header_height = 68
+    row_height = 76
+    totals_height = 90
     height = 208 + header_height + (max(len(transactions), 1) * row_height) + totals_height + 36
     image = Image.new("RGB", (width, height), "#F3F6F4")
     draw = ImageDraw.Draw(image)
@@ -202,7 +202,7 @@ def _build_report_jpg(start_date, end_date, selected_customer_names, export_rows
     draw.rectangle((margin, y, width - margin, y + header_height), fill="#17666B")
     x = margin
     for label, column_width in zip(headers, column_widths):
-        draw.text((x + 12, y + 17), label, font=header_font, fill="#FFFFFF")
+        draw.text((x + 12, y + 19), label, font=header_font, fill="#FFFFFF")
         x += column_width
     y += header_height
 
@@ -221,19 +221,19 @@ def _build_report_jpg(start_date, end_date, selected_customer_names, export_rows
             x = margin
             for column_index, (value, column_width) in enumerate(zip(values, column_widths)):
                 font = amount_font if column_index in {3, 4, 5} else row_font
-                draw.text((x + 12, y + 19), _fit_report_text(draw, value, font, column_width - 24), font=font, fill="#202B2A")
+                draw.text((x + 12, y + 22), _fit_report_text(draw, value, font, column_width - 24), font=font, fill="#202B2A")
                 x += column_width
             y += row_height
     else:
         draw.rectangle((margin, y, width - margin, y + row_height), fill="#FFFFFF")
-        draw.text((margin + 12, y + 19), "No transactions in this date range.", font=row_font, fill="#52615D")
+        draw.text((margin + 12, y + 22), "No transactions in this date range.", font=row_font, fill="#52615D")
         y += row_height
 
     draw.rectangle((margin, y, width - margin, y + totals_height), fill="#DDE9E3")
     footer_values = ["TOTAL", "", "", f"{total_debit:,.2f}", f"{total_credit:,.2f}", f"{balance:,.2f}"]
     x = margin
     for value, column_width in zip(footer_values, column_widths):
-        draw.text((x + 12, y + 22), _fit_report_text(draw, value, total_font, column_width - 24), font=total_font, fill="#174F50")
+        draw.text((x + 12, y + 27), _fit_report_text(draw, value, total_font, column_width - 24), font=total_font, fill="#174F50")
         x += column_width
 
     output = io.BytesIO()
