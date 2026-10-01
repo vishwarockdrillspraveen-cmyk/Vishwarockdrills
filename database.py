@@ -684,6 +684,9 @@ def get_customer_report():
             FROM customer_advances
             GROUP BY customer_phone
         ) ca ON ca.customer_phone = c.phone
+        WHERE so.customer_phone IS NOT NULL
+            OR s.customer_phone IS NOT NULL
+            OR ca.customer_phone IS NOT NULL
         ORDER BY total_outstanding DESC, c.customer_name
         """
     ).fetchall()

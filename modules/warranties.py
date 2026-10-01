@@ -36,22 +36,32 @@ def warranty_page():
     products = get_products()
     product_lookup = {str(row[0]): row for row in products}
 
-    product_options = [f"{row[1]} ({row[2]})" for row in inventory_products]
-    selected_product_label = st.session_state.get("warranty_selected_product", product_options[0] if product_options else "")
-    selected_inventory_row = next((row for row in inventory_products if f"{row[1]} ({row[2]})" == selected_product_label), inventory_products[0] if inventory_products else None)
+    product_options = {
+        f"{row[1]} ({row[2]}) | ID: {row[0]}": row
+        for row in inventory_products
+    }
+    product_labels = list(product_options)
+    previous_selection = st.session_state.get("warranty_selected_product")
+    if previous_selection and previous_selection not in product_options:
+        migrated_selection = next(
+            (
+                label for label, row in product_options.items()
+                if previous_selection == f"{row[1]} ({row[2]})"
+            ),
+            product_labels[0],
+        )
+        st.session_state.warranty_selected_product = migrated_selection
 
-    if selected_inventory_row is None:
-        st.info("No products available in inventory.")
-        return
-
-    master_row = product_lookup.get(str(selected_inventory_row[0]), None)
+    selected_product_label = st.selectbox(
+        "Select product",
+        product_labels,
+        key="warranty_selected_product",
+    )
+    selected_inventory_row = product_options[selected_product_label]
+    master_row = product_lookup.get(str(selected_inventory_row[0]))
     if master_row is None:
-        st.warning("This product is in inventory but not present in the product master list. Please verify the product record.")
+        st.warning("This inventory product is missing from the product master. Check its Product ID.")
         return
-
-    current_product_label = st.selectbox("Select product", product_options, key="warranty_selected_product")
-    selected_inventory_row = next((row for row in inventory_products if f"{row[1]} ({row[2]})" == current_product_label), inventory_products[0])
-    master_row = product_lookup.get(str(selected_inventory_row[0]), products[0])
 
     product_id = selected_inventory_row[0]
     product_name = selected_inventory_row[1]
@@ -60,13 +70,20 @@ def warranty_page():
     initial_mm = float(str(master_row[5] or 0).strip() or 0)
     warranty_limit_mm = float(master_row[7] or 0)
 
-    summary_col1, summary_col2, summary_col3 = st.columns(3)
-    with summary_col1:
-        st.metric("Company", company_name)
-    with summary_col2:
-        st.metric("Product price", f"{sale_price:,.2f}")
-    with summary_col3:
-        st.metric("Initial size", f"{initial_mm:.1f} mm")
+    with st.container(border=True):
+        detail_col1, detail_col2, detail_col3 = st.columns(3)
+        with detail_col1:
+            st.metric("Product ID", str(master_row[0]))
+            st.metric("Sold by", str(master_row[3] or "-"))
+            st.metric("Sale price", f"{sale_price:,.2f}")
+        with detail_col2:
+            st.metric("Product name", str(master_row[2]))
+            st.metric("Product type", str(master_row[4] or "-"))
+            st.metric("Initial size", f"{initial_mm:.1f} mm")
+        with detail_col3:
+            st.metric("Company", company_name)
+            st.metric("Warranty coverage", "Yes" if master_row[6] else "No")
+            st.metric("Warranty limit", f"{warranty_limit_mm:.1f} mm")
 
     current_mm = st.number_input("Current size (mm)", min_value=0.0, step=0.1, format="%.1f", key="warranty_current_mm")
     claim_date = st.date_input("Claim date", value=datetime.today().date(), key="warranty_claim_date")
