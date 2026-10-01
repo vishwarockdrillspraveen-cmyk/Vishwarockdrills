@@ -546,7 +546,7 @@ def customer_reports_page():
     st.download_button(
         "Download full report (JPG)",
         data=report_jpg,
-        file_name=f"customer_report_{start_date.isoformat()}_to_{end_date.isoformat()}.jpg",
+        file_name=f"customer_transaction_ledger_{_format_report_date(start_date)}_to_{_format_report_date(end_date)}.jpg",
         mime="image/jpeg",
         icon=":material/download:",
         type="primary",
