@@ -47,82 +47,85 @@ def _get_product_row_from_label(label, product_rows):
     return None
 
 
+def _render_sales_register():
+    sales_rows = get_sales()
+    st.subheader("Sales register")
+    if not sales_rows:
+        st.info("No sales stored in backend yet.")
+        return
+
+    all_sales_display_rows = [
+        {
+            "Sale ID": row[0],
+            "Customer Phone": row[1],
+            "Customer Name": row[2],
+            "Product ID": row[3],
+            "Product": row[4],
+            "Company": row[5],
+            "Date": row[6],
+            "Sale Price": float(row[7] or 0),
+            "Quantity": int(row[13] if len(row) > 13 else 1),
+            "Total Value": float((row[7] or 0) * (row[13] if len(row) > 13 else 1)),
+            "Paid": float(row[8] or 0),
+            "Pending": float(row[9] or 0),
+        }
+        for row in sales_rows
+    ]
+    sales_filter = st.text_input(
+        "Filter sales",
+        placeholder="Search customer, product, company, or date",
+        icon=":material/search:",
+        key="sales_register_filter",
+    ).strip().lower()
+    sales_display_rows = [
+        row for row in all_sales_display_rows
+        if not sales_filter or sales_filter in " ".join(str(value) for value in row.values()).lower()
+    ]
+    st.caption(f"Showing {len(sales_display_rows)} of {len(all_sales_display_rows)} sales")
+    st.dataframe(sales_display_rows, width="stretch", hide_index=True)
+
+    csv_buffer = io.StringIO()
+    fieldnames = [
+        "Sale ID",
+        "Customer Phone",
+        "Customer Name",
+        "Product ID",
+        "Product",
+        "Company",
+        "Date",
+        "Sale Price",
+        "Quantity",
+        "Total Value",
+        "Paid",
+        "Pending",
+    ]
+    writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(all_sales_display_rows)
+
+    st.download_button(
+        label="Download sales CSV",
+        data=csv_buffer.getvalue(),
+        file_name="sales_details.csv",
+        mime="text/csv",
+        width="content",
+        icon=":material/download:",
+    )
+
+
 def sales_page():
     st.header("Sales", icon=":material/point_of_sale:")
     st.caption("Record customer sales and review payments due.")
-    selected_action = action_control("sales_action_mode", ["Add", "Edit", "Delete"], "Add")
+    selected_action = action_control(
+        "sales_action_mode",
+        ["Add", "Edit", "Delete", "Sales Register"],
+        "Add",
+    )
 
     with st.container():
-        sales_rows = get_sales()
-        st.subheader("Sales register")
-        if sales_rows:
-            all_sales_display_rows = [
-                {
-                    "Sale ID": row[0],
-                    "Customer Phone": row[1],
-                    "Customer Name": row[2],
-                    "Product ID": row[3],
-                    "Product": row[4],
-                    "Company": row[5],
-                    "Date": row[6],
-                    "Sale Price": float(row[7] or 0),
-                    "Quantity": int(row[13] if len(row) > 13 else 1),
-                    "Total Value": float((row[7] or 0) * (row[13] if len(row) > 13 else 1)),
-                    "Paid": float(row[8] or 0),
-                    "Pending": float(row[9] or 0),
-                }
-                for row in sales_rows
-            ]
-            sales_filter = st.text_input(
-                "Filter sales",
-                placeholder="Search customer, product, company, or date",
-                icon=":material/search:",
-                key="sales_register_filter",
-            ).strip().lower()
-            sales_display_rows = [
-                row for row in all_sales_display_rows
-                if not sales_filter or sales_filter in " ".join(str(value) for value in row.values()).lower()
-            ]
-            st.caption(f"Showing {len(sales_display_rows)} of {len(all_sales_display_rows)} sales")
-            st.dataframe(
-                sales_display_rows,
-                width="stretch",
-                hide_index=True,
-            )
-
-            csv_buffer = io.StringIO()
-            fieldnames = [
-                "Sale ID",
-                "Customer Phone",
-                "Customer Name",
-                "Product ID",
-                "Product",
-                "Company",
-                "Date",
-                "Sale Price",
-                "Quantity",
-                "Total Value",
-                "Paid",
-                "Pending",
-            ]
-            writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(all_sales_display_rows)
-
-            st.download_button(
-                label="Download sales CSV",
-                data=csv_buffer.getvalue(),
-                file_name="sales_details.csv",
-                mime="text/csv",
-                width="content",
-                icon=":material/download:",
-            )
-        else:
-            st.info("No sales stored in backend yet.")
-
-        st.space("medium")
-
-        if selected_action == "Add":
+        if selected_action == "Sales Register":
+            _render_sales_register()
+        elif selected_action == "Add":
             st.subheader("Add sale")
             customers = get_customers()
             product_rows = get_products()
@@ -136,32 +139,12 @@ def sales_page():
                 return
 
             with st.form("add_sale_form", clear_on_submit=True):
-                customer_search = st.text_input("Search customer by name or phone", placeholder="Type a customer name or phone number")
                 customer_options = [_format_customer(row) for row in customers]
-                if customer_search.strip():
-                    customer_options = [
-                        label for label in customer_options
-                        if customer_search.lower() in label.lower()
-                    ]
-                if not customer_options:
-                    st.warning("No matching customer found. Please use a different search value.")
-                    st.stop()
-
                 selected_customer_label = st.selectbox("Select Customer", customer_options)
                 customer_phone = _get_customer_phone_from_label(selected_customer_label, customers)
                 customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
 
-                product_search = st.text_input("Search product", placeholder="Type product name or company")
                 product_options = [_format_product_row(row) for row in product_rows]
-                if product_search.strip():
-                    product_options = [
-                        label for label in product_options
-                        if product_search.lower() in label.lower()
-                    ]
-                if not product_options:
-                    st.warning("No matching product found. Please use a different search value.")
-                    st.stop()
-
                 selected_product_label = st.selectbox("Select Product", product_options)
                 selected_product_row = _get_product_row_from_label(selected_product_label, product_rows)
                 product_id = selected_product_row[0]
