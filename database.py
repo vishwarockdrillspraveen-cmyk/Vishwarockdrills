@@ -1150,15 +1150,19 @@ def get_product_sale_price(product_id):
     return float(row[0]) if row and row[0] is not None else 0.0
 
 
-def add_warranty_claim(product_id, product_name, company_name, initial_mm, current_mm, sale_price, warranty_limit_mm, warranty_value, claim_date=None):
+def add_warranty_claim(product_id, product_name, company_name, initial_mm, current_mm, sale_price, warranty_limit_mm, warranty_value, claim_date=None, customer_phone=None, customer_name=None):
     valid_date = validate_date_value(claim_date or datetime.now().date(), "Claim Date")
+    clean_customer_phone = str(customer_phone or "").strip()
+    if not clean_customer_phone:
+        raise ValueError("Customer is required.")
+
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
         """
         INSERT INTO warranty_claims
-        (product_id, product_name, company_name, initial_mm, current_mm, sale_price, warranty_limit_mm, warranty_value, claim_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (product_id, product_name, company_name, initial_mm, current_mm, sale_price, warranty_limit_mm, warranty_value, claim_date, customer_phone, customer_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             str(product_id).strip(),
@@ -1170,6 +1174,8 @@ def add_warranty_claim(product_id, product_name, company_name, initial_mm, curre
             float(warranty_limit_mm or 0),
             float(warranty_value or 0),
             valid_date,
+            clean_customer_phone,
+            str(customer_name or "").strip(),
         ),
     )
     conn.commit()
@@ -1193,7 +1199,9 @@ def get_warranty_claims():
             sale_price,
             warranty_limit_mm,
             warranty_value,
-            claim_date
+            claim_date,
+            customer_phone,
+            customer_name
         FROM warranty_claims
         ORDER BY claim_date DESC, product_name
         """
@@ -1595,9 +1603,19 @@ def initialize_database():
         sale_price REAL NOT NULL DEFAULT 0,
         warranty_limit_mm REAL NOT NULL DEFAULT 0,
         warranty_value REAL NOT NULL DEFAULT 0,
-        claim_date TEXT NOT NULL
+        claim_date TEXT NOT NULL,
+        customer_phone TEXT,
+        customer_name TEXT
     )
     """)
+
+    warranty_claim_columns = {
+        row[1] for row in cursor.execute("PRAGMA table_info(warranty_claims)").fetchall()
+    }
+    if "customer_phone" not in warranty_claim_columns:
+        cursor.execute("ALTER TABLE warranty_claims ADD COLUMN customer_phone TEXT")
+    if "customer_name" not in warranty_claim_columns:
+        cursor.execute("ALTER TABLE warranty_claims ADD COLUMN customer_name TEXT")
 
     cursor.execute("SELECT COUNT(*) FROM companies")
     if cursor.fetchone()[0] == 0:

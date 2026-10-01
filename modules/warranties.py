@@ -1,7 +1,7 @@
 import streamlit as st
 from datetime import datetime
 
-from database import add_warranty_claim, delete_warranty_claim, get_products, get_warranty_claims
+from database import add_warranty_claim, delete_warranty_claim, get_customers, get_products, get_warranty_claims
 
 
 def _calculate_warranty_value(sale_price, initial_mm, current_mm, warranty_limit_mm):
@@ -32,6 +32,22 @@ def warranty_page():
     if not products:
         st.info("No products are available. Add a product in Product Management before processing warranty claims.")
         return
+
+    customers = get_customers()
+    if not customers:
+        st.info("No customers are available. Add a customer before processing warranty claims.")
+        return
+
+    customer_options = {
+        f"{row[1]} ({row[0]})": row
+        for row in customers
+    }
+    selected_customer_label = st.selectbox(
+        "Select customer",
+        list(customer_options),
+        key="warranty_selected_customer",
+    )
+    selected_customer = customer_options[selected_customer_label]
 
     product_options = {
         f"{row[2]} ({row[1]}) | ID: {row[0]}": row
@@ -106,6 +122,8 @@ def warranty_page():
                     warranty_limit_mm=warranty_limit_mm,
                     warranty_value=live_claim_value,
                     claim_date=claim_date,
+                    customer_phone=selected_customer[0],
+                    customer_name=selected_customer[1],
                 )
                 st.success(f"Warranty claim saved successfully. Claim ID: {claim_id}")
                 st.rerun()
@@ -131,6 +149,8 @@ def warranty_page():
                 "Warranty Limit mm": row[7],
                 "Amount Returned": row[8],
                 "Claim Date": row[9],
+                "Customer Phone": row[10] or "Not recorded",
+                "Customer Name": row[11] or "Not recorded",
             }
             for row in claims
         ],
