@@ -67,158 +67,177 @@ def _fit_report_text(draw, value, font, max_width):
     return text + "..."
 
 
-def _build_report_jpg(start_date, end_date, report_metrics, customer_rows, export_rows):
+def _build_report_ledger(export_rows):
+    type_order = {
+        "Outstanding entry": 0,
+        "Sale": 1,
+        "Customer advance": 2,
+        "Payment received": 3,
+        "Warranty claim": 4,
+    }
+    transactions = []
+
+    for record in export_rows:
+        record_type = record["Record type"]
+        debit = 0.0
+        credit = 0.0
+        reference = record.get("Reference ID", "")
+        date_text = str(record.get("Date", ""))
+
+        if record_type in {"Summary", "Customer summary"}:
+            continue
+        if record_type == "Outstanding entry":
+            amount = float(record.get("Amount", 0) or 0)
+            debit = max(amount, 0.0)
+            credit = max(-amount, 0.0)
+            details = record.get("Transaction details", "")
+        elif record_type == "Sale":
+            debit = float(record.get("Sale value", 0) or 0)
+            credit = float(record.get("Amount paid", 0) or 0)
+            details = " | ".join(
+                filter(
+                    None,
+                    [
+                        record.get("Product"),
+                        record.get("Company"),
+                        f"Qty: {record.get('Quantity', '')}",
+                        f"Unit price: {record.get('Unit price', '')}",
+                        f"Pending: {record.get('Amount pending', '')}",
+                    ],
+                )
+            )
+        elif record_type == "Customer advance":
+            credit = float(record.get("Amount paid", 0) or 0)
+            details = " | ".join(
+                filter(
+                    None,
+                    [record.get("Paid to"), record.get("Company"), record.get("Payment mode"), record.get("Transaction details")],
+                )
+            )
+        elif record_type == "Payment received":
+            credit = float(record.get("Amount paid", 0) or 0)
+            details = record.get("Transaction details", "")
+        elif record_type == "Warranty claim":
+            credit = float(record.get("Warranty credit", 0) or 0)
+            details = " | ".join(
+                filter(
+                    None,
+                    [
+                        record.get("Product"),
+                        record.get("Company"),
+                        f"Initial: {record.get('Initial size (mm)', '')} mm",
+                        f"Current: {record.get('Current size (mm)', '')} mm",
+                        f"Limit: {record.get('Warranty limit (mm)', '')} mm",
+                    ],
+                )
+            )
+        else:
+            continue
+
+        transactions.append(
+            {
+                "Date": date_text,
+                "Customer": record.get("Customer name", ""),
+                "Type": record_type,
+                "Reference": reference,
+                "Details": details,
+                "Debit": debit,
+                "Credit": credit,
+            }
+        )
+
+    transactions.sort(
+        key=lambda row: (
+            _as_date(row["Date"]),
+            type_order.get(row["Type"], 99),
+            row["Customer"],
+            str(row["Reference"]),
+        )
+    )
+    total_debit = sum(row["Debit"] for row in transactions)
+    total_credit = sum(row["Credit"] for row in transactions)
+    balance = 0.0
+    for transaction in transactions:
+        balance += transaction["Debit"] - transaction["Credit"]
+        transaction["Balance"] = balance
+
+    return transactions, total_debit, total_credit, balance
+
+
+def _build_report_jpg(start_date, end_date, selected_phones, export_rows):
     width = 1800
     margin = 64
     content_width = width - (margin * 2)
-    transaction_rows = [
-        row for row in export_rows
-        if row["Record type"] not in {"Summary", "Customer summary"}
-    ]
+    transactions, total_debit, total_credit, balance = _build_report_ledger(export_rows)
     row_height = 46
-    customer_table_height = 48 + (len(customer_rows) * row_height)
-    transaction_table_height = 48 + (max(len(transaction_rows), 1) * row_height)
-    height = 64 + 72 + 38 + 42 + 2 * (112 + 16) + 44 + customer_table_height + 72 + 34 + transaction_table_height + 64
-
+    header_height = 50
+    height = 250 + (max(len(transactions), 1) * row_height) + header_height + 92
     image = Image.new("RGB", (width, height), "#F3F6F4")
     draw = ImageDraw.Draw(image)
     title_font = _report_font(38, bold=True)
     subtitle_font = _report_font(19)
-    section_font = _report_font(23, bold=True)
-    card_label_font = _report_font(17, bold=True)
-    card_value_font = _report_font(27, bold=True)
-    table_header_font = _report_font(14, bold=True)
-    table_font = _report_font(14)
+    header_font = _report_font(15, bold=True)
+    row_font = _report_font(15)
+    total_font = _report_font(16, bold=True)
 
-    draw.rounded_rectangle((margin, 36, width - margin, 144), radius=14, fill="#FFFFFF", outline="#D8E2DD", width=2)
-    draw.text((margin + 28, 50), "Vishwa Rock Drills | Customer report", font=title_font, fill="#174F50")
+    draw.rounded_rectangle((margin, 36, width - margin, 150), radius=14, fill="#FFFFFF", outline="#D8E2DD", width=2)
+    draw.text((margin + 28, 52), "Vishwa Rock Drills | Customer transaction ledger", font=title_font, fill="#174F50")
     draw.text(
-        (margin + 30, 108),
-        f"{start_date.isoformat()} to {end_date.isoformat()}  |  {len(customer_rows)} selected customer(s)",
+        (margin + 30, 112),
+        f"{start_date.isoformat()} to {end_date.isoformat()}  |  {len(selected_phones)} selected customer(s)  |  Debit increases balance; credit reduces balance",
         font=subtitle_font,
         fill="#52615D",
     )
 
-    y = 174
-    metric_colors = ["#17666B", "#B85C22", "#337458", "#587FAD"]
-    card_gap = 18
-    card_width = (content_width - (card_gap * 3)) // 4
-    for metric_index, (label, amount) in enumerate(report_metrics):
-        row_index, column_index = divmod(metric_index, 4)
-        left = margin + column_index * (card_width + card_gap)
-        top = y + row_index * 128
-        color = metric_colors[column_index]
-        draw.rounded_rectangle(
-            (left, top, left + card_width, top + 112),
-            radius=12,
-            fill="#FFFFFF",
-            outline="#D8E2DD",
-            width=2,
-        )
-        draw.rounded_rectangle((left, top, left + 8, top + 112), radius=4, fill=color)
-        draw.text((left + 22, top + 18), label, font=card_label_font, fill="#52615D")
-        draw.text((left + 22, top + 53), f"₹{float(amount):,.2f}", font=card_value_font, fill="#202B2A")
-
-    y += 2 * 128 + 18
-    draw.text((margin, y), "Customer summary", font=section_font, fill="#174F50")
-    y += 40
-    customer_headers = [
-        "Customer",
-        "Outstanding net",
-        "Sales value",
-        "Sales paid",
-        "Sales pending",
-        "Advances",
-        "Warranty claims",
-        "Total outstanding",
-    ]
-    customer_widths = [360, 190, 175, 150, 175, 180, 190, 188]
-    x = margin
-    draw.rectangle((x, y, width - margin, y + 48), fill="#17666B")
-    for label, cell_width in zip(customer_headers, customer_widths):
-        draw.text((x + 10, y + 15), _fit_report_text(draw, label, table_header_font, cell_width - 18), font=table_header_font, fill="#FFFFFF")
-        x += cell_width
-    y += 48
-
-    customer_fields = [
-        lambda row: f"{row['Customer Name']} ({row['Customer Phone']})",
-        lambda row: f"₹{row['Outstanding Entries (Net)']:,.2f}",
-        lambda row: f"₹{row['Sales Value']:,.2f}",
-        lambda row: f"₹{row['Sales Paid']:,.2f}",
-        lambda row: f"₹{row['Sales Outstanding']:,.2f}",
-        lambda row: f"₹{row['Customer Advances (Credit)']:,.2f}",
-        lambda row: f"₹{row['Warranty Claims (Credit)']:,.2f}",
-        lambda row: f"₹{row['Total Outstanding']:,.2f}",
-    ]
-    for row_index, customer in enumerate(customer_rows):
-        background = "#FFFFFF" if row_index % 2 == 0 else "#EAF0ED"
-        draw.rectangle((margin, y, width - margin, y + row_height), fill=background)
-        x = margin
-        for cell_width, value_func in zip(customer_widths, customer_fields):
-            value = _fit_report_text(draw, value_func(customer), table_font, cell_width - 18)
-            draw.text((x + 10, y + 15), value, font=table_font, fill="#202B2A")
-            x += cell_width
-        y += row_height
-
-    y += 26
-    draw.text((margin, y), "Transaction details", font=section_font, fill="#174F50")
-    y += 40
-    detail_headers = ["Type", "Date", "Customer", "Reference", "Details", "Qty", "Amount", "Paid", "Pending / credit"]
-    base_widths = [145, 112, 220, 82, 500, 56, 145, 125, 175]
+    headers = ["Date", "Customer", "Transaction", "Reference", "Details", "Debit", "Credit", "Balance"]
+    base_widths = [120, 190, 175, 90, 520, 175, 175, 217]
     width_scale = content_width / sum(base_widths)
-    detail_widths = [int(cell_width * width_scale) for cell_width in base_widths]
-    detail_widths[-1] += content_width - sum(detail_widths)
-    draw.rectangle((margin, y, width - margin, y + 48), fill="#355F58")
+    column_widths = [int(column_width * width_scale) for column_width in base_widths]
+    column_widths[-1] += content_width - sum(column_widths)
+    y = 180
+    draw.rectangle((margin, y, width - margin, y + header_height), fill="#17666B")
     x = margin
-    for label, cell_width in zip(detail_headers, detail_widths):
-        draw.text((x + 8, y + 16), _fit_report_text(draw, label, table_header_font, cell_width - 14), font=table_header_font, fill="#FFFFFF")
-        x += cell_width
-    y += 48
+    for header, column_width in zip(headers, column_widths):
+        draw.text((x + 9, y + 17), _fit_report_text(draw, header, header_font, column_width - 16), font=header_font, fill="#FFFFFF")
+        x += column_width
+    y += header_height
 
-    for row_index, record in enumerate(transaction_rows):
-        row_values = _report_detail_values(record)
-        background = "#FFFFFF" if row_index % 2 == 0 else "#EAF0ED"
-        draw.rectangle((margin, y, width - margin, y + row_height), fill=background)
-        x = margin
-        for cell_width, value in zip(detail_widths, row_values):
-            fitted_value = _fit_report_text(draw, value, table_font, cell_width - 14)
-            draw.text((x + 8, y + 15), fitted_value, font=table_font, fill="#202B2A")
-            x += cell_width
-        y += row_height
-    if not transaction_rows:
+    if transactions:
+        for row_index, transaction in enumerate(transactions):
+            background = "#FFFFFF" if row_index % 2 == 0 else "#EAF0ED"
+            draw.rectangle((margin, y, width - margin, y + row_height), fill=background)
+            values = [
+                transaction["Date"],
+                transaction["Customer"],
+                transaction["Type"],
+                transaction["Reference"],
+                transaction["Details"],
+                f"₹{transaction['Debit']:,.2f}" if transaction["Debit"] else "-",
+                f"₹{transaction['Credit']:,.2f}" if transaction["Credit"] else "-",
+                f"₹{transaction['Balance']:,.2f}",
+            ]
+            x = margin
+            for value, column_width in zip(values, column_widths):
+                fitted_value = _fit_report_text(draw, value, row_font, column_width - 16)
+                draw.text((x + 9, y + 15), fitted_value, font=row_font, fill="#202B2A")
+                x += column_width
+            y += row_height
+    else:
         draw.rectangle((margin, y, width - margin, y + row_height), fill="#FFFFFF")
-        draw.text((margin + 12, y + 15), "No transaction details in this date range.", font=table_font, fill="#52615D")
+        draw.text((margin + 12, y + 15), "No transactions in this date range.", font=row_font, fill="#52615D")
+        y += row_height
+
+    y += 8
+    draw.rectangle((margin, y, width - margin, y + 52), fill="#DDE9E3")
+    footer_values = ["TOTAL", "", "", "", "", f"₹{total_debit:,.2f}", f"₹{total_credit:,.2f}", f"₹{balance:,.2f}"]
+    x = margin
+    for value, column_width in zip(footer_values, column_widths):
+        draw.text((x + 9, y + 17), _fit_report_text(draw, value, total_font, column_width - 16), font=total_font, fill="#174F50")
+        x += column_width
 
     output = io.BytesIO()
     image.save(output, format="JPEG", quality=92, optimize=True)
     return output.getvalue()
-
-
-def _report_detail_values(record):
-    record_type = record["Record type"]
-    if record_type == "Customer advance":
-        details = " | ".join(filter(None, [record.get("Paid to"), record.get("Company"), record.get("Payment mode"), record.get("Transaction details")]))
-        return [record_type, record.get("Date"), record.get("Customer name"), record.get("Reference ID"), details, "", "", record.get("Amount paid"), ""]
-    if record_type == "Payment received":
-        return [record_type, record.get("Date"), record.get("Customer name"), record.get("Reference ID"), record.get("Transaction details"), "", "", record.get("Amount paid"), ""]
-    if record_type == "Outstanding entry":
-        return [record_type, record.get("Date"), record.get("Customer name"), record.get("Reference ID"), record.get("Transaction details"), "", record.get("Amount"), "", ""]
-    if record_type == "Sale":
-        details = " | ".join(filter(None, [record.get("Product"), record.get("Company"), f"Unit price: {record.get('Unit price', '')}"]))
-        return [record_type, record.get("Date"), record.get("Customer name"), record.get("Reference ID"), details, record.get("Quantity"), record.get("Sale value"), record.get("Amount paid"), record.get("Amount pending")]
-    details = " | ".join(
-        filter(
-            None,
-            [
-                record.get("Product"),
-                record.get("Company"),
-                f"Initial: {record.get('Initial size (mm)', '')} mm",
-                f"Current: {record.get('Current size (mm)', '')} mm",
-                f"Limit: {record.get('Warranty limit (mm)', '')} mm",
-            ],
-        )
-    )
-    return [record_type, record.get("Date"), record.get("Customer name"), record.get("Reference ID"), details, "", "", "", record.get("Warranty credit")]
 
 
 def customer_reports_page():
@@ -519,8 +538,7 @@ def customer_reports_page():
     report_jpg = _build_report_jpg(
         start_date,
         end_date,
-        report_metrics,
-        customer_summary_rows,
+        selected_phones,
         export_rows,
     )
     st.download_button(
