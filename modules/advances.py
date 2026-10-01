@@ -22,6 +22,7 @@ from database import (
 from modules.ui import action_control
 
 PAYMENT_MODES = ["Cash", "UPI", "Bank Transfer", "Cheque", "Other"]
+CUSTOMER_ADVANCE_PAYMENT_MODES = PAYMENT_MODES + ["Discount"]
 
 
 def _safe_date_field(label, value=None):
@@ -184,25 +185,29 @@ def _render_customer_advances():
                 customer_phone = next((row[0] for row in customers if f"{row[1]} ({row[0]})" == customer), customers[0][0])
                 customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
 
-                payment_to = st.selectbox("Payment To", ["Us", "Company"])
+                payment_mode = st.selectbox("Payment Mode", CUSTOMER_ADVANCE_PAYMENT_MODES)
+                payment_to = "Us"
                 company_name = ""
-                if payment_to == "Company":
-                    companies = get_companies()
-                    if not companies:
-                        st.info("No companies available. Add a company in Partnership with before creating a customer advance to company.")
-                        return
-                    company_name = st.selectbox("Company", [row[1] for row in companies])
+                if payment_mode == "Discount":
+                    st.caption("Discount is recorded as a customer credit; no company advance is created.")
+                else:
+                    payment_to = st.selectbox("Payment To", ["Us", "Company"])
+                    if payment_to == "Company":
+                        companies = get_companies()
+                        if not companies:
+                            st.info("No companies available. Add a company in Partnership with before creating a customer advance to company.")
+                            return
+                        company_name = st.selectbox("Company", [row[1] for row in companies])
 
                 advance_date = _safe_date_field("Advance Date")
                 amount_paid = st.number_input("Amount Paid", min_value=0.0, step=0.01, format="%.2f")
-                payment_mode = st.selectbox("Payment Mode", PAYMENT_MODES)
                 transaction_details = st.text_input("Transaction Details", placeholder="UPI ID, bank ref, cheque no., etc.")
                 remarks = st.text_input("Remarks")
 
                 submitted = st.form_submit_button("Save Customer Advance")
                 if submitted:
                     try:
-                        if payment_mode != "Cash" and transaction_details.strip() == "":
+                        if payment_mode not in ("Cash", "Discount") and transaction_details.strip() == "":
                             st.error("Transaction Details is required for non-cash payment modes.")
                         else:
                             add_customer_advance(customer_phone, customer_name, company_name, payment_to, advance_date, amount_paid, payment_mode, transaction_details, remarks)
@@ -245,21 +250,29 @@ def _render_customer_advances():
                 customer_phone = next((row[0] for row in customers if f"{row[1]} ({row[0]})" == customer), customers[0][0])
                 customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
 
-                payment_to = st.selectbox("Payment To", ["Us", "Company"], index=["Us", "Company"].index(selected_row[4]))
+                payment_mode = st.selectbox(
+                    "Payment Mode",
+                    CUSTOMER_ADVANCE_PAYMENT_MODES,
+                    index=CUSTOMER_ADVANCE_PAYMENT_MODES.index(selected_row[7]) if selected_row[7] in CUSTOMER_ADVANCE_PAYMENT_MODES else 0,
+                )
+                payment_to = "Us"
                 company_name = ""
-                if payment_to == "Company":
-                    company_options = [row[1] for row in get_companies()]
-                    company_name = st.selectbox("Company", company_options, index=company_options.index(selected_row[3]) if selected_row[3] in company_options else 0)
+                if payment_mode == "Discount":
+                    st.caption("Discount is recorded as a customer credit; no company advance is created.")
+                else:
+                    payment_to = st.selectbox("Payment To", ["Us", "Company"], index=["Us", "Company"].index(selected_row[4]))
+                    if payment_to == "Company":
+                        company_options = [row[1] for row in get_companies()]
+                        company_name = st.selectbox("Company", company_options, index=company_options.index(selected_row[3]) if selected_row[3] in company_options else 0)
 
                 advance_date = _safe_date_field("Advance Date", value=datetime.strptime(selected_row[5], "%Y-%m-%d").date())
                 amount_paid = st.number_input("Amount Paid", min_value=0.0, step=0.01, format="%.2f", value=float(selected_row[6] or 0))
-                payment_mode = st.selectbox("Payment Mode", PAYMENT_MODES, index=PAYMENT_MODES.index(selected_row[7]) if selected_row[7] in PAYMENT_MODES else 0)
                 transaction_details = st.text_input("Transaction Details", value=str(selected_row[8] or ""))
                 remarks = st.text_input("Remarks", value=str(selected_row[9] or ""))
                 submitted = st.form_submit_button("Update Customer Advance")
                 if submitted:
                     try:
-                        if payment_mode != "Cash" and transaction_details.strip() == "":
+                        if payment_mode not in ("Cash", "Discount") and transaction_details.strip() == "":
                             st.error("Transaction Details is required for non-cash payment modes.")
                         else:
                             update_customer_advance(selected_id, customer_phone, customer_name, company_name, payment_to, advance_date, amount_paid, payment_mode, transaction_details, remarks)

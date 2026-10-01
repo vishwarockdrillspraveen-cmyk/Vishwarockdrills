@@ -309,10 +309,12 @@ def add_customer_advance(customer_phone, customer_name, company_name, payment_to
     clean_phone = str(customer_phone or "").strip()
     if not clean_phone:
         raise ValueError("Customer phone is required.")
-    if payment_mode != "Cash" and str(transaction_details or "").strip() == "":
+    if payment_mode not in ("Cash", "Discount") and str(transaction_details or "").strip() == "":
         raise ValueError("Transaction Details is required for non-cash payment modes.")
 
     clean_payment_to = str(payment_to or "").strip()
+    if payment_mode == "Discount" and clean_payment_to == "Company":
+        raise ValueError("Discounts must be recorded as customer credits, not paid to a company.")
     if clean_payment_to == "Company":
         clean_company_name = str(company_name or "").strip()
         if not clean_company_name:
@@ -374,10 +376,12 @@ def update_customer_advance(advance_id, customer_phone, customer_name, company_n
     clean_phone = str(customer_phone or "").strip()
     if not clean_phone:
         raise ValueError("Customer phone is required.")
-    if payment_mode != "Cash" and str(transaction_details or "").strip() == "":
+    if payment_mode not in ("Cash", "Discount") and str(transaction_details or "").strip() == "":
         raise ValueError("Transaction Details is required for non-cash payment modes.")
 
     clean_payment_to = str(payment_to or "").strip()
+    if payment_mode == "Discount" and clean_payment_to == "Company":
+        raise ValueError("Discounts must be recorded as customer credits, not paid to a company.")
     clean_company_name = str(company_name or "").strip() if clean_payment_to == "Company" else ""
     if clean_payment_to == "Company" and not clean_company_name:
         raise ValueError("Company name is required when payment is made to the company.")

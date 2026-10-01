@@ -119,7 +119,7 @@ def _build_report_ledger(export_rows):
         elif record_type == "Customer advance":
             credit = float(record.get("Amount paid", 0) or 0)
             payment_mode = record.get("Payment mode", "")
-            details = payment_mode if payment_mode in {"Cash", "UPI"} else ""
+            details = payment_mode if payment_mode in {"Cash", "UPI", "Discount"} else ""
         elif record_type == "Payment received":
             credit = float(record.get("Amount paid", 0) or 0)
             details = record.get("Transaction details", "")
