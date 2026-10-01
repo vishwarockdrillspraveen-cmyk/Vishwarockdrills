@@ -1569,16 +1569,6 @@ def initialize_database():
     )
     """)
 
-    cursor.execute("SELECT COUNT(*) FROM customers")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute(
-            """
-            INSERT INTO customers (phone, customer_name, email, created_at, last_updated)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            ("0000000000", "Demo Customer", "demo@example.com", get_timestamp(), get_timestamp())
-        )
-
     cursor.execute("SELECT COUNT(*) FROM companies")
     if cursor.fetchone()[0] == 0:
         pass

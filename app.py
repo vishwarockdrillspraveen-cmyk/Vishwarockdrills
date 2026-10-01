@@ -7,105 +7,21 @@ initialize_database()
 
 st.set_page_config(
     page_title="Vishwa Rock Drills",
-    page_icon="🛠️",
+    page_icon=":material/construction:",
     layout="wide"
 )
 
-st.markdown(
-    """
-    <style>
-    :root {
-        --bg: #f3f6fb;
-        --surface: #ffffff;
-        --surface-2: #eef3f8;
-        --primary: #1f4e79;
-        --primary-soft: #4f8bbd;
-        --text: #1f2937;
-        --muted: #5b6473;
-        --border: rgba(31, 78, 121, 0.12);
-    }
+st.title("Vishwa Rock Drills", icon=":material/construction:")
 
-    .stApp {
-        background: linear-gradient(180deg, #f7f9fc 0%, #edf3f9 100%);
-        color: var(--text);
-    }
-
-    .stApp > div {
-        background: transparent;
-    }
-
-    h1, h2, h3, h4, h5, h6 {
-        color: var(--primary) !important;
-    }
-
-    .stSidebar {
-        background: linear-gradient(180deg, #f7fafc 0%, #edf3f8 100%);
-        border-right: 1px solid var(--border);
-    }
-
-    .stSidebar .block-container {
-        padding-top: 1rem;
-    }
-
-    .stButton > button {
-        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-soft) 100%);
-        color: white;
-        border: none;
-        border-radius: 0.7rem;
-        font-weight: 600;
-        transition: 0.2s ease;
-    }
-
-    .stButton > button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 18px rgba(31, 78, 121, 0.18);
-    }
-
-    div[data-testid="stForm"] {
-        background: rgba(255, 255, 255, 0.97);
-        border: 1px solid var(--border);
-        border-radius: 1rem;
-        padding: 1rem;
-    }
-
-    .stDataFrame, .stTable {
-        border-radius: 0.75rem;
-        overflow: hidden;
-        border: 1px solid var(--border);
-    }
-
-    [data-testid="stMetric"] {
-        background: rgba(255, 255, 255, 0.95);
-        border: 1px solid var(--border);
-        border-radius: 0.75rem;
-    }
-
-    .stAlert, .stSuccess, .stInfo, .stWarning, .stError {
-        border-radius: 0.75rem;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    """
-    <div style="padding: 0.4rem 0 1rem 0;">
-        <h1 style="margin: 0; color: #1f4e79; font-size: 2.4rem; font-weight: 800;">Vishwa Rock Drills</h1>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.sidebar.markdown("### Menu")
+st.sidebar.markdown("### Workspace")
 main_menu_items = [
-    "Dashboard",
-    "Customers",
-    "Inventory",
-    "Purchase Details",
-    "Sales",
-    "Advances",
-    "Warranty-Claims"
+    ("Dashboard", "dashboard"),
+    ("Customers", "groups"),
+    ("Inventory", "inventory_2"),
+    ("Purchase Details", "receipt_long"),
+    ("Sales", "point_of_sale"),
+    ("Advances", "account_balance_wallet"),
+    ("Warranty-Claims", "verified_user"),
 ]
 
 if "menu" not in st.session_state:
@@ -115,8 +31,14 @@ if "inventory_submenu" not in st.session_state:
 if "advances_submenu" not in st.session_state:
     st.session_state.advances_submenu = "Company Advances"
 
-for item in main_menu_items:
-    if st.sidebar.button(item, key=f"nav_{item}", width="stretch"):
+for item, icon in main_menu_items:
+    if st.sidebar.button(
+        item,
+        key=f"nav_{item}",
+        icon=f":material/{icon}:",
+        type="primary" if item == st.session_state.menu else "secondary",
+        width="stretch",
+    ):
         st.session_state.menu = item
 
 menu = st.session_state.menu
@@ -129,23 +51,29 @@ elif menu == "Customers":
     customer_page()
 
 elif menu == "Inventory":
-    action_col, content_col = st.columns([1.5, 4])
-
-    with action_col:
-        st.markdown("#### Inventory")
-        for item in ["Partnership with", "Products"]:
-            if st.button(item, key=f"inventory_{item}", use_container_width=True):
-                st.session_state.inventory_submenu = item
+    content_col, action_col = st.columns([4, 1.5])
 
     with content_col:
         inventory_menu = st.session_state.inventory_submenu
-
         if inventory_menu == "Partnership with":
             from modules.partnerships import partnership_page
             partnership_page()
         elif inventory_menu == "Products":
             from modules.products import product_page
             product_page()
+
+    with action_col:
+        st.markdown("#### Inventory")
+        for item, icon in [("Partnership with", "handshake"), ("Products", "category")]:
+            if st.button(
+                item,
+                key=f"inventory_{item}",
+                icon=f":material/{icon}:",
+                type="primary" if item == st.session_state.inventory_submenu else "secondary",
+                width="stretch",
+            ):
+                st.session_state.inventory_submenu = item
+
 elif menu == "Purchase Details":
     from modules.inventory import inventory_tracking_page
     inventory_tracking_page()
@@ -155,18 +83,31 @@ elif menu == "Sales":
     sales_page()
 
 elif menu == "Advances":
-    action_col, content_col = st.columns([1.5, 4])
-
-    with action_col:
-        st.markdown("#### Advances")
-        for item in ["Company Advances", "Customer Advances", "Customer Outstanding", "Customer Report", "Payments"]:
-            if st.button(item, key=f"advances_{item}", use_container_width=True):
-                st.session_state.advances_submenu = item
+    content_col, action_col = st.columns([4, 1.7])
 
     with content_col:
         advances_menu = st.session_state.advances_submenu
         from modules.advances import advances_page
         advances_page(advances_menu)
+
+    with action_col:
+        st.markdown("#### Advances")
+        advance_menu_items = [
+            ("Company Advances", "account_balance"),
+            ("Customer Advances", "payments"),
+            ("Customer Outstanding", "account_balance_wallet"),
+            ("Customer Report", "query_stats"),
+            ("Payments", "point_of_sale"),
+        ]
+        for item, icon in advance_menu_items:
+            if st.button(
+                item,
+                key=f"advances_{item}",
+                icon=f":material/{icon}:",
+                type="primary" if item == st.session_state.advances_submenu else "secondary",
+                width="stretch",
+            ):
+                st.session_state.advances_submenu = item
 
 elif menu == "Warranty-Claims":
     from modules.warranties import warranty_page

@@ -9,6 +9,7 @@ from database import (
     update_inventory_record,
     validate_date_value,
 )
+from modules.ui import action_control
 
 
 def _date_field(label, value=None):
@@ -22,24 +23,46 @@ def _date_field(label, value=None):
 
 
 def inventory_tracking_page():
-    st.header("Purchase Details")
+    st.header("Purchase details", icon=":material/receipt_long:")
+    st.caption("Record and maintain product purchases and received quantities.")
+    selected_action = action_control("purchase_action_mode", ["Add", "Edit", "Delete"], "Add")
 
-    if "inventory_tracking_action" not in st.session_state:
-        st.session_state.inventory_tracking_action = "Add Purchase"
+    with st.container():
+        inventory_records = get_inventory_records()
+        if inventory_records:
+            st.subheader("Purchase register")
+            purchase_filter = st.text_input(
+                "Filter purchases",
+                placeholder="Search product, company, ID, or date",
+                icon=":material/search:",
+                key="purchase_register_filter",
+            ).strip().lower()
+            visible_purchases = [
+                row for row in inventory_records
+                if not purchase_filter or purchase_filter in " ".join(str(value) for value in row).lower()
+            ]
+            st.caption(f"Showing {len(visible_purchases)} of {len(inventory_records)} purchases")
+            st.dataframe(
+                [
+                    {
+                        "Purchase ID": row[0],
+                        "Product ID": row[1],
+                        "Product": row[2],
+                        "Company": row[3],
+                        "Qty received": row[4],
+                        "Purchase date": row[5],
+                        "Price per qty": float(row[6] or 0),
+                        "Total price": float(row[7] or 0),
+                    }
+                    for row in visible_purchases
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+        st.space("small")
 
-    menu_options = ["Add Purchase", "Edit Purchase", "Delete Purchase"]
-    action_col, content_col = st.columns([1.5, 4])
-
-    with action_col:
-        for option in menu_options:
-            if st.button(option, key=f"inventory_tracking_action_{option}", use_container_width=True):
-                st.session_state.inventory_tracking_action = option
-
-    with content_col:
-        selected_action = st.session_state.inventory_tracking_action
-
-        if selected_action == "Add Purchase":
-            st.subheader("Add Purchase Details")
+        if selected_action == "Add":
+            st.subheader("Add purchase")
             with st.form("add_inventory_form", clear_on_submit=True):
                 all_products = get_products()
                 product_choices = [f"{row[2]} ({row[1]})" for row in all_products]
@@ -85,8 +108,8 @@ def inventory_tracking_page():
                         except ValueError as exc:
                             st.error(str(exc))
 
-        elif selected_action == "Edit Purchase":
-            st.subheader("Edit Purchase Details")
+        elif selected_action == "Edit":
+            st.subheader("Edit purchase")
             inventory_records = get_inventory_records()
 
             if not inventory_records:
@@ -182,8 +205,8 @@ def inventory_tracking_page():
             edited_total_price = edited_qty_received * edited_single_product_price
             st.markdown(f"### Total Price: {edited_total_price:,.2f}")
 
-        elif selected_action == "Delete Purchase":
-            st.subheader("Delete Purchase Details")
+        elif selected_action == "Delete":
+            st.subheader("Delete purchase")
             inventory_records = get_inventory_records()
 
             if not inventory_records:

@@ -7,50 +7,48 @@ from database import (
     get_products,
     update_product,
 )
+from modules.ui import action_control
 
 
 def product_page():
-    st.header("Product Management")
+    st.header("Products", icon=":material/category:")
+    st.caption("Maintain product specifications, warranty limits, and sale prices.")
+    selected_action = action_control("product_action_mode", ["Add", "Edit", "Delete"], "Add")
 
-    if "product_action" not in st.session_state:
-        st.session_state.product_action = "Add Product"
+    product_rows = get_products()
+    if product_rows:
+        st.subheader("Product list")
+        product_search = st.text_input(
+            "Filter products",
+            placeholder="Search by product, company, or ID",
+            icon=":material/search:",
+            key="product_list_search",
+        )
+        visible_products = [
+            row for row in product_rows
+            if product_search.strip().lower() in " ".join(str(value or "") for value in row[:3]).lower()
+        ]
+        st.dataframe(
+            [
+                {
+                    "Product ID": row[0],
+                    "Company": row[1],
+                    "Product name": row[2],
+                    "Sold by": row[3],
+                    "Type": row[4],
+                    "Actual size (mm)": row[5],
+                    "Under warranty": "Yes" if row[6] else "No",
+                    "Warranty limit (mm)": row[7],
+                    "Sale price": row[8],
+                }
+                for row in visible_products
+            ],
+            width="stretch",
+            hide_index=True,
+        )
 
-    menu_options = ["Add Product", "Edit Product", "Delete Product"]
-    action_col, content_col = st.columns([1.5, 4])
-
-    with action_col:
-        st.markdown("#### Products")
-        for option in menu_options:
-            if st.button(option, key=f"product_action_{option}", use_container_width=True):
-                st.session_state.product_action = option
-
-    with content_col:
-        selected_action = st.session_state.product_action
-
-        product_rows = get_products()
-        if product_rows:
-            st.markdown("### Product List")
-            st.dataframe(
-                [
-                    {
-                        "Product ID": row[0],
-                        "Company": row[1],
-                        "Product Name": row[2],
-                        "Sold by": row[3],
-                        "Type": row[4],
-                        "Actual Size (mm)": row[5],
-                        "Under Warranty": "Yes" if row[6] else "No",
-                        "Warranty Limit (mm)": row[7],
-                        "Sale Price": row[8],
-                    }
-                    for row in product_rows
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        if selected_action == "Add Product":
-            st.subheader("Add Product")
+    if selected_action == "Add":
+            st.subheader("Add product")
             company_rows = get_companies()
             if not company_rows:
                 st.info("No partnership companies available. Add a company in Partnership with first.")
@@ -86,7 +84,7 @@ def product_page():
                     value=0.0
                 )
 
-                submitted = st.form_submit_button("Save Product")
+                submitted = st.form_submit_button("Save product", type="primary", icon=":material/add:")
 
                 if submitted:
                     final_company = company_name.strip()
@@ -107,19 +105,15 @@ def product_page():
                         )
                         st.success("Product Saved Successfully")
                         st.rerun()
-
-        elif selected_action == "Edit Product":
-            st.subheader("Edit Product")
+    elif selected_action == "Edit":
+            st.subheader("Edit product")
             products = get_products()
 
             if not products:
                 st.info("No products available to edit")
                 return
 
-            search_term = st.text_input(
-                "Search by company or product name",
-                placeholder="Type a company or product name"
-            )
+            search_term = st.text_input("Find a product", placeholder="Search by company or product name", icon=":material/search:")
 
             if search_term.strip() == "":
                 st.info("Enter a company or product name to search")
@@ -136,7 +130,7 @@ def product_page():
                 return
 
             product_options = [f"{row[2]} ({row[1]})" for row in filtered_products]
-            selected_product_label = st.selectbox("Matching products", product_options)
+            selected_product_label = st.selectbox("Matching product", product_options)
             selected_row = filtered_products[product_options.index(selected_product_label)]
             selected_product_id = selected_row[0]
 
@@ -176,7 +170,7 @@ def product_page():
                     value=float(selected_row[8] or 0)
                 )
 
-                update_submitted = st.form_submit_button("Update Product")
+                update_submitted = st.form_submit_button("Save changes", type="primary", icon=":material/save:")
                 if update_submitted:
                     if edited_company_name.strip() == "" or edited_product_name.strip() == "":
                         st.error("Company name and product name are required")
@@ -192,21 +186,18 @@ def product_page():
                             edited_warranty_limit_mm,
                             edited_sale_price
                         )
-                        st.success("Product Updated Successfully")
+                        st.success("Product updated successfully")
                         st.rerun()
 
-        elif selected_action == "Delete Product":
-            st.subheader("Delete Product")
+    elif selected_action == "Delete":
+            st.subheader("Delete product")
             products = get_products()
 
             if not products:
                 st.info("No products available to delete")
                 return
 
-            search_term = st.text_input(
-                "Search by company or product name",
-                placeholder="Type a company or product name"
-            )
+            search_term = st.text_input("Find a product", placeholder="Search by company or product name", icon=":material/search:")
 
             if search_term.strip() == "":
                 st.info("Enter a company or product name to search")
@@ -223,13 +214,13 @@ def product_page():
                 return
 
             product_options = [f"{row[2]} ({row[1]})" for row in filtered_products]
-            selected_product_label = st.selectbox("Matching products", product_options)
+            selected_product_label = st.selectbox("Matching product", product_options)
             selected_row = filtered_products[product_options.index(selected_product_label)]
             selected_product_id = selected_row[0]
 
-            st.warning(f"Are you sure you want to delete product: {selected_row[2]} ({selected_row[1]})?")
+            st.warning(f"Confirm deletion of {selected_row[2]} ({selected_row[1]})?")
             with st.form("delete_product_form"):
-                delete_submitted = st.form_submit_button("Delete This Product")
+                delete_submitted = st.form_submit_button("Delete product", type="primary", icon=":material/delete:")
                 if delete_submitted:
                     delete_product(selected_product_id)
                     st.success("Product Deleted")

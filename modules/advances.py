@@ -20,6 +20,7 @@ from database import (
     update_customer_outstanding,
     validate_date_value,
 )
+from modules.ui import action_control
 
 PAYMENT_MODES = ["Cash", "UPI", "Bank Transfer", "Cheque", "Other"]
 
@@ -32,37 +33,37 @@ def _safe_date_field(label, value=None):
         return None
 
 
-def _render_advance_table(rows, columns):
+def _render_advance_table(rows, columns, filter_key):
     if not rows:
         st.info("No advance records available.")
         return
     dataframe = [dict(zip(columns, row)) for row in rows]
-    st.dataframe(dataframe, use_container_width=True, hide_index=True)
+    search_term = st.text_input(
+        "Filter records",
+        placeholder="Search this list",
+        icon=":material/search:",
+        key=filter_key,
+    ).strip().lower()
+    visible_rows = [
+        row for row in dataframe
+        if not search_term or search_term in " ".join(str(value) for value in row.values()).lower()
+    ]
+    st.caption(f"Showing {len(visible_rows)} of {len(dataframe)} records")
+    st.dataframe(visible_rows, width="stretch", hide_index=True)
 
 
 def _render_company_advances():
-    st.subheader("Company Advances")
+    st.subheader("Company advances", icon=":material/account_balance:")
+    selected_action = action_control("company_advance_action_mode", ["Add", "Edit", "Delete"], "Add")
 
-    if "company_advance_action" not in st.session_state:
-        st.session_state.company_advance_action = "Add Company Advance"
-
-    menu_options = ["Add Company Advance", "Edit Company Advance", "Delete Company Advance"]
-    left_col, right_col = st.columns([1.5, 4])
-
-    with left_col:
-        for option in menu_options:
-            if st.button(option, key=f"company_advance_action_{option}", use_container_width=True):
-                st.session_state.company_advance_action = option
-
-    with right_col:
-        selected_action = st.session_state.company_advance_action
+    with st.container():
 
         companies = get_companies()
         if not companies:
             st.info("No companies are available. Add a company first in the Partnership with section.")
             return
 
-        if selected_action == "Add Company Advance":
+        if selected_action == "Add":
             with st.form("add_company_advance_form", clear_on_submit=True):
                 company_name = st.selectbox("Company", [row[1] for row in companies])
                 advance_date = _safe_date_field("Advance Date")
@@ -86,7 +87,7 @@ def _render_company_advances():
                     except ValueError as exc:
                         st.error(str(exc))
 
-        elif selected_action == "Edit Company Advance":
+        elif selected_action == "Edit":
             rows = get_company_advances()
             if not rows:
                 st.info("No company advances found.")
@@ -129,7 +130,7 @@ def _render_company_advances():
                     except ValueError as exc:
                         st.error(str(exc))
 
-        elif selected_action == "Delete Company Advance":
+        elif selected_action == "Delete":
             rows = get_company_advances()
             if not rows:
                 st.info("No company advances found.")
@@ -163,28 +164,18 @@ def _render_company_advances():
         _render_advance_table(
             get_company_advances(),
             ["Advance ID", "Company ID", "Company Name", "Advance Date", "Amount Paid", "Payment Mode", "Transaction Details", "Remarks", "Linked Customer Advance ID"],
+            "company_advances_filter",
         )
 
 
 def _render_customer_advances():
-    st.subheader("Customer Advances")
+    st.subheader("Customer advances", icon=":material/payments:")
+    selected_action = action_control("customer_advance_action_mode", ["Add", "Edit", "Delete"], "Add")
 
-    if "customer_advance_action" not in st.session_state:
-        st.session_state.customer_advance_action = "Add Customer Advance"
-
-    menu_options = ["Add Customer Advance", "Edit Customer Advance", "Delete Customer Advance"]
-    left_col, right_col = st.columns([1.5, 4])
-
-    with left_col:
-        for option in menu_options:
-            if st.button(option, key=f"customer_advance_action_{option}", use_container_width=True):
-                st.session_state.customer_advance_action = option
-
-    with right_col:
-        selected_action = st.session_state.customer_advance_action
+    with st.container():
         customers = get_customers()
 
-        if selected_action == "Add Customer Advance":
+        if selected_action == "Add":
             if not customers:
                 st.info("No customers are available. Add a customer before recording an advance.")
                 return
@@ -221,7 +212,7 @@ def _render_customer_advances():
                     except ValueError as exc:
                         st.error(str(exc))
 
-        elif selected_action == "Edit Customer Advance":
+        elif selected_action == "Edit":
             rows = get_customer_advances()
             if not rows:
                 st.info("No customer advances found.")
@@ -278,7 +269,7 @@ def _render_customer_advances():
                     except ValueError as exc:
                         st.error(str(exc))
 
-        elif selected_action == "Delete Customer Advance":
+        elif selected_action == "Delete":
             rows = get_customer_advances()
             if not rows:
                 st.info("No customer advances found.")
@@ -312,28 +303,18 @@ def _render_customer_advances():
         _render_advance_table(
             get_customer_advances(),
             ["Advance ID", "Customer Phone", "Customer Name", "Company Name", "Paid To", "Advance Date", "Amount Paid", "Payment Mode", "Transaction Details", "Remarks", "Linked Company Advance ID"],
+            "customer_advances_filter",
         )
 
 
 def _render_customer_outstanding():
-    st.subheader("Customer Outstanding")
+    st.subheader("Customer outstanding", icon=":material/account_balance_wallet:")
+    selected_action = action_control("customer_outstanding_action_mode", ["Add", "Edit", "Delete"], "Add")
 
-    if "customer_outstanding_action" not in st.session_state:
-        st.session_state.customer_outstanding_action = "Add Outstanding"
-
-    menu_options = ["Add Outstanding", "Edit Outstanding", "Delete Outstanding"]
-    left_col, right_col = st.columns([1.5, 4])
-
-    with left_col:
-        for option in menu_options:
-            if st.button(option, key=f"customer_outstanding_action_{option}", use_container_width=True):
-                st.session_state.customer_outstanding_action = option
-
-    with right_col:
-        selected_action = st.session_state.customer_outstanding_action
+    with st.container():
         customers = get_customers()
 
-        if selected_action == "Add Outstanding":
+        if selected_action == "Add":
             if not customers:
                 st.info("No customers are available. Add a customer before entering outstanding values.")
                 return
@@ -355,7 +336,7 @@ def _render_customer_outstanding():
                     except ValueError as exc:
                         st.error(str(exc))
 
-        elif selected_action == "Edit Outstanding":
+        elif selected_action == "Edit":
             rows = get_customer_outstanding()
             if not rows:
                 st.info("No customer outstanding entries found.")
@@ -398,7 +379,7 @@ def _render_customer_outstanding():
                     except ValueError as exc:
                         st.error(str(exc))
 
-        elif selected_action == "Delete Outstanding":
+        elif selected_action == "Delete":
             rows = get_customer_outstanding()
             if not rows:
                 st.info("No customer outstanding entries found.")
@@ -448,7 +429,7 @@ def _render_customer_outstanding():
                 }
                 for row in rows
             ],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -471,7 +452,7 @@ def _render_customer_report():
             }
             for row in rows
         ],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -520,7 +501,7 @@ def _render_payments():
             }
             for row in payment_rows
         ],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 

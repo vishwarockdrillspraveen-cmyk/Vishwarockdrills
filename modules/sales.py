@@ -14,6 +14,7 @@ from database import (
     update_sale,
     validate_date_value,
 )
+from modules.ui import action_control
 
 
 def _safe_date_input(label, value=None):
@@ -47,25 +48,15 @@ def _get_product_row_from_label(label, product_rows):
 
 
 def sales_page():
-    st.header("Sales Management")
+    st.header("Sales", icon=":material/point_of_sale:")
+    st.caption("Record customer sales and review payments due.")
+    selected_action = action_control("sales_action_mode", ["Add", "Edit", "Delete"], "Add")
 
-    if "sales_action" not in st.session_state:
-        st.session_state.sales_action = "Add Sale"
-
-    menu_options = ["Add Sale", "Edit Sale", "Delete Sale"]
-    action_col, content_col = st.columns([1.5, 4])
-
-    with action_col:
-        st.markdown("#### Sales")
-        for option in menu_options:
-            if st.button(option, key=f"sales_action_{option}", use_container_width=True):
-                st.session_state.sales_action = option
-
-    with content_col:
+    with st.container():
         sales_rows = get_sales()
-        st.markdown("### Stored Sales")
+        st.subheader("Sales register")
         if sales_rows:
-            sales_display_rows = [
+            all_sales_display_rows = [
                 {
                     "Sale ID": row[0],
                     "Customer Phone": row[1],
@@ -82,9 +73,20 @@ def sales_page():
                 }
                 for row in sales_rows
             ]
+            sales_filter = st.text_input(
+                "Filter sales",
+                placeholder="Search customer, product, company, or date",
+                icon=":material/search:",
+                key="sales_register_filter",
+            ).strip().lower()
+            sales_display_rows = [
+                row for row in all_sales_display_rows
+                if not sales_filter or sales_filter in " ".join(str(value) for value in row.values()).lower()
+            ]
+            st.caption(f"Showing {len(sales_display_rows)} of {len(all_sales_display_rows)} sales")
             st.dataframe(
                 sales_display_rows,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -105,23 +107,23 @@ def sales_page():
             ]
             writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
             writer.writeheader()
-            writer.writerows(sales_display_rows)
+            writer.writerows(all_sales_display_rows)
 
             st.download_button(
-                label="Download Sales CSV",
+                label="Download sales CSV",
                 data=csv_buffer.getvalue(),
                 file_name="sales_details.csv",
                 mime="text/csv",
-                use_container_width=True,
+                width="content",
+                icon=":material/download:",
             )
         else:
             st.info("No sales stored in backend yet.")
 
-        st.markdown("---")
-        selected_action = st.session_state.sales_action
+        st.space("medium")
 
-        if selected_action == "Add Sale":
-            st.subheader("Add Sale")
+        if selected_action == "Add":
+            st.subheader("Add sale")
             customers = get_customers()
             product_rows = get_products()
 
@@ -204,7 +206,7 @@ def sales_page():
                 else:
                     st.info("This product does not carry warranty coverage.")
 
-                submitted = st.form_submit_button("Save Sale", use_container_width=True)
+                submitted = st.form_submit_button("Save sale", type="primary", icon=":material/save:", width="stretch")
                 if submitted:
                     if not customer_phone:
                         st.error("Please select a valid customer")
@@ -231,8 +233,8 @@ def sales_page():
                         except ValueError as exc:
                             st.error(str(exc))
 
-        elif selected_action == "Edit Sale":
-            st.subheader("Edit Sale")
+        elif selected_action == "Edit":
+            st.subheader("Edit sale")
             sales_rows = get_sales()
             if not sales_rows:
                 st.info("No sales found")
@@ -341,8 +343,8 @@ def sales_page():
                     except ValueError as exc:
                         st.error(str(exc))
 
-        elif selected_action == "Delete Sale":
-            st.subheader("Delete Sale")
+        elif selected_action == "Delete":
+            st.subheader("Delete sale")
             sales_rows = get_sales()
             if not sales_rows:
                 st.info("No sales found")
