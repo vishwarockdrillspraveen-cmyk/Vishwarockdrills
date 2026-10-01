@@ -98,7 +98,6 @@ elif menu == "Advances":
             ("Customer Advances", "payments"),
             ("Customer Outstanding", "account_balance_wallet"),
             ("Customer Report", "query_stats"),
-            ("Payments", "point_of_sale"),
         ]
         for item, icon in advance_menu_items:
             if st.button(
