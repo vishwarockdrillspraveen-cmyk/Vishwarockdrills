@@ -659,9 +659,11 @@ def get_customer_report():
             COALESCE(so.manual_outstanding, 0) AS manual_outstanding,
             COALESCE(s.sales_outstanding, 0) AS sales_outstanding,
             COALESCE(ca.customer_advances, 0) AS customer_advances,
+            COALESCE(wc.warranty_credits, 0) AS warranty_credits,
             COALESCE(so.manual_outstanding, 0)
                 + COALESCE(s.sales_outstanding, 0)
-                - COALESCE(ca.customer_advances, 0) AS total_outstanding
+                - COALESCE(ca.customer_advances, 0)
+                - COALESCE(wc.warranty_credits, 0) AS total_outstanding
         FROM customers c
         LEFT JOIN (
             SELECT
@@ -690,9 +692,18 @@ def get_customer_report():
             FROM customer_advances
             GROUP BY customer_phone
         ) ca ON ca.customer_phone = c.phone
+        LEFT JOIN (
+            SELECT
+                customer_phone,
+                SUM(warranty_value) AS warranty_credits
+            FROM warranty_claims
+            WHERE customer_phone IS NOT NULL
+            GROUP BY customer_phone
+        ) wc ON wc.customer_phone = c.phone
         WHERE so.customer_phone IS NOT NULL
             OR s.customer_phone IS NOT NULL
             OR ca.customer_phone IS NOT NULL
+            OR wc.customer_phone IS NOT NULL
         ORDER BY total_outstanding DESC, c.customer_name
         """
     ).fetchall()
