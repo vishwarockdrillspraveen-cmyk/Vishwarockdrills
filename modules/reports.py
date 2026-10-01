@@ -1,8 +1,9 @@
-import csv
 import io
 from datetime import date
+from pathlib import Path
 
 import streamlit as st
+from PIL import Image, ImageDraw, ImageFont
 
 from database import (
     get_customer_advances,
@@ -33,6 +34,191 @@ def _render_section(title, rows, empty_message):
         st.dataframe(rows, width="stretch", hide_index=True)
     else:
         st.caption(empty_message)
+
+
+def _report_font(size, bold=False):
+    font_candidates = (
+        [
+            Path("C:/Windows/Fonts/segoeuib.ttf"),
+            Path("C:/Windows/Fonts/arialbd.ttf"),
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+            Path("/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"),
+        ]
+        if bold
+        else [
+            Path("C:/Windows/Fonts/segoeui.ttf"),
+            Path("C:/Windows/Fonts/arial.ttf"),
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+            Path("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"),
+        ]
+    )
+    for font_path in font_candidates:
+        if font_path.exists():
+            return ImageFont.truetype(str(font_path), size=size)
+    return ImageFont.load_default(size=size)
+
+
+def _fit_report_text(draw, value, font, max_width):
+    text = str(value or "")
+    if draw.textlength(text, font=font) <= max_width:
+        return text
+    while text and draw.textlength(text + "...", font=font) > max_width:
+        text = text[:-1]
+    return text + "..."
+
+
+def _build_report_jpg(start_date, end_date, report_metrics, customer_rows, export_rows):
+    width = 1800
+    margin = 64
+    content_width = width - (margin * 2)
+    transaction_rows = [
+        row for row in export_rows
+        if row["Record type"] not in {"Summary", "Customer summary"}
+    ]
+    row_height = 46
+    customer_table_height = 48 + (len(customer_rows) * row_height)
+    transaction_table_height = 48 + (max(len(transaction_rows), 1) * row_height)
+    height = 64 + 72 + 38 + 42 + 2 * (112 + 16) + 44 + customer_table_height + 72 + 34 + transaction_table_height + 64
+
+    image = Image.new("RGB", (width, height), "#F3F6F4")
+    draw = ImageDraw.Draw(image)
+    title_font = _report_font(38, bold=True)
+    subtitle_font = _report_font(19)
+    section_font = _report_font(23, bold=True)
+    card_label_font = _report_font(17, bold=True)
+    card_value_font = _report_font(27, bold=True)
+    table_header_font = _report_font(14, bold=True)
+    table_font = _report_font(14)
+
+    draw.rounded_rectangle((margin, 36, width - margin, 144), radius=14, fill="#FFFFFF", outline="#D8E2DD", width=2)
+    draw.text((margin + 28, 50), "Vishwa Rock Drills | Customer report", font=title_font, fill="#174F50")
+    draw.text(
+        (margin + 30, 108),
+        f"{start_date.isoformat()} to {end_date.isoformat()}  |  {len(customer_rows)} selected customer(s)",
+        font=subtitle_font,
+        fill="#52615D",
+    )
+
+    y = 174
+    metric_colors = ["#17666B", "#B85C22", "#337458", "#587FAD"]
+    card_gap = 18
+    card_width = (content_width - (card_gap * 3)) // 4
+    for metric_index, (label, amount) in enumerate(report_metrics):
+        row_index, column_index = divmod(metric_index, 4)
+        left = margin + column_index * (card_width + card_gap)
+        top = y + row_index * 128
+        color = metric_colors[column_index]
+        draw.rounded_rectangle(
+            (left, top, left + card_width, top + 112),
+            radius=12,
+            fill="#FFFFFF",
+            outline="#D8E2DD",
+            width=2,
+        )
+        draw.rounded_rectangle((left, top, left + 8, top + 112), radius=4, fill=color)
+        draw.text((left + 22, top + 18), label, font=card_label_font, fill="#52615D")
+        draw.text((left + 22, top + 53), f"₹{float(amount):,.2f}", font=card_value_font, fill="#202B2A")
+
+    y += 2 * 128 + 18
+    draw.text((margin, y), "Customer summary", font=section_font, fill="#174F50")
+    y += 40
+    customer_headers = [
+        "Customer",
+        "Outstanding net",
+        "Sales value",
+        "Sales paid",
+        "Sales pending",
+        "Advances",
+        "Warranty claims",
+        "Total outstanding",
+    ]
+    customer_widths = [360, 190, 175, 150, 175, 180, 190, 188]
+    x = margin
+    draw.rectangle((x, y, width - margin, y + 48), fill="#17666B")
+    for label, cell_width in zip(customer_headers, customer_widths):
+        draw.text((x + 10, y + 15), _fit_report_text(draw, label, table_header_font, cell_width - 18), font=table_header_font, fill="#FFFFFF")
+        x += cell_width
+    y += 48
+
+    customer_fields = [
+        lambda row: f"{row['Customer Name']} ({row['Customer Phone']})",
+        lambda row: f"₹{row['Outstanding Entries (Net)']:,.2f}",
+        lambda row: f"₹{row['Sales Value']:,.2f}",
+        lambda row: f"₹{row['Sales Paid']:,.2f}",
+        lambda row: f"₹{row['Sales Outstanding']:,.2f}",
+        lambda row: f"₹{row['Customer Advances (Credit)']:,.2f}",
+        lambda row: f"₹{row['Warranty Claims (Credit)']:,.2f}",
+        lambda row: f"₹{row['Total Outstanding']:,.2f}",
+    ]
+    for row_index, customer in enumerate(customer_rows):
+        background = "#FFFFFF" if row_index % 2 == 0 else "#EAF0ED"
+        draw.rectangle((margin, y, width - margin, y + row_height), fill=background)
+        x = margin
+        for cell_width, value_func in zip(customer_widths, customer_fields):
+            value = _fit_report_text(draw, value_func(customer), table_font, cell_width - 18)
+            draw.text((x + 10, y + 15), value, font=table_font, fill="#202B2A")
+            x += cell_width
+        y += row_height
+
+    y += 26
+    draw.text((margin, y), "Transaction details", font=section_font, fill="#174F50")
+    y += 40
+    detail_headers = ["Type", "Date", "Customer", "Reference", "Details", "Qty", "Amount", "Paid", "Pending / credit"]
+    base_widths = [145, 112, 220, 82, 500, 56, 145, 125, 175]
+    width_scale = content_width / sum(base_widths)
+    detail_widths = [int(cell_width * width_scale) for cell_width in base_widths]
+    detail_widths[-1] += content_width - sum(detail_widths)
+    draw.rectangle((margin, y, width - margin, y + 48), fill="#355F58")
+    x = margin
+    for label, cell_width in zip(detail_headers, detail_widths):
+        draw.text((x + 8, y + 16), _fit_report_text(draw, label, table_header_font, cell_width - 14), font=table_header_font, fill="#FFFFFF")
+        x += cell_width
+    y += 48
+
+    for row_index, record in enumerate(transaction_rows):
+        row_values = _report_detail_values(record)
+        background = "#FFFFFF" if row_index % 2 == 0 else "#EAF0ED"
+        draw.rectangle((margin, y, width - margin, y + row_height), fill=background)
+        x = margin
+        for cell_width, value in zip(detail_widths, row_values):
+            fitted_value = _fit_report_text(draw, value, table_font, cell_width - 14)
+            draw.text((x + 8, y + 15), fitted_value, font=table_font, fill="#202B2A")
+            x += cell_width
+        y += row_height
+    if not transaction_rows:
+        draw.rectangle((margin, y, width - margin, y + row_height), fill="#FFFFFF")
+        draw.text((margin + 12, y + 15), "No transaction details in this date range.", font=table_font, fill="#52615D")
+
+    output = io.BytesIO()
+    image.save(output, format="JPEG", quality=92, optimize=True)
+    return output.getvalue()
+
+
+def _report_detail_values(record):
+    record_type = record["Record type"]
+    if record_type == "Customer advance":
+        details = " | ".join(filter(None, [record.get("Paid to"), record.get("Company"), record.get("Payment mode"), record.get("Transaction details")]))
+        return [record_type, record.get("Date"), record.get("Customer name"), record.get("Reference ID"), details, "", "", record.get("Amount paid"), ""]
+    if record_type == "Payment received":
+        return [record_type, record.get("Date"), record.get("Customer name"), record.get("Reference ID"), record.get("Transaction details"), "", "", record.get("Amount paid"), ""]
+    if record_type == "Outstanding entry":
+        return [record_type, record.get("Date"), record.get("Customer name"), record.get("Reference ID"), record.get("Transaction details"), "", record.get("Amount"), "", ""]
+    if record_type == "Sale":
+        details = " | ".join(filter(None, [record.get("Product"), record.get("Company"), f"Unit price: {record.get('Unit price', '')}"]))
+        return [record_type, record.get("Date"), record.get("Customer name"), record.get("Reference ID"), details, record.get("Quantity"), record.get("Sale value"), record.get("Amount paid"), record.get("Amount pending")]
+    details = " | ".join(
+        filter(
+            None,
+            [
+                record.get("Product"),
+                record.get("Company"),
+                f"Initial: {record.get('Initial size (mm)', '')} mm",
+                f"Current: {record.get('Current size (mm)', '')} mm",
+                f"Limit: {record.get('Warranty limit (mm)', '')} mm",
+            ],
+        )
+    )
+    return [record_type, record.get("Date"), record.get("Customer name"), record.get("Reference ID"), details, "", "", "", record.get("Warranty credit")]
 
 
 def customer_reports_page():
@@ -330,15 +516,18 @@ def customer_reports_page():
             }
         )
 
-    csv_buffer = io.StringIO(newline="")
-    writer = csv.DictWriter(csv_buffer, fieldnames=export_columns, extrasaction="ignore")
-    writer.writeheader()
-    writer.writerows(export_rows)
+    report_jpg = _build_report_jpg(
+        start_date,
+        end_date,
+        report_metrics,
+        customer_summary_rows,
+        export_rows,
+    )
     st.download_button(
-        "Download full report (CSV)",
-        data="\ufeff" + csv_buffer.getvalue(),
-        file_name=f"customer_report_{start_date.isoformat()}_to_{end_date.isoformat()}.csv",
-        mime="text/csv",
+        "Download full report (JPG)",
+        data=report_jpg,
+        file_name=f"customer_report_{start_date.isoformat()}_to_{end_date.isoformat()}.jpg",
+        mime="image/jpeg",
         icon=":material/download:",
         type="primary",
     )
