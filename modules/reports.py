@@ -1,3 +1,5 @@
+import csv
+import io
 from datetime import date
 
 import streamlit as st
@@ -118,6 +120,146 @@ def customer_reports_page():
             with column:
                 st.metric(label, f"₹{amount:,.2f}")
 
+    export_columns = [
+        "Record type",
+        "Category",
+        "From date",
+        "To date",
+        "Date",
+        "Customer name",
+        "Customer phone",
+        "Reference ID",
+        "Product",
+        "Company",
+        "Quantity",
+        "Unit price",
+        "Sale value",
+        "Amount paid",
+        "Amount pending",
+        "Amount",
+        "Payment mode",
+        "Paid to",
+        "Transaction details",
+        "Initial size (mm)",
+        "Current size (mm)",
+        "Warranty limit (mm)",
+        "Warranty credit",
+    ]
+    export_rows = []
+    for category, amount in summary_rows:
+        export_rows.append(
+            {
+                "Record type": "Summary",
+                "Category": category,
+                "From date": start_date.isoformat(),
+                "To date": end_date.isoformat(),
+                "Amount": amount,
+            }
+        )
+
+    for row in customer_advances:
+        export_rows.append(
+            {
+                "Record type": "Customer advance",
+                "Category": "Advances and payments",
+                "From date": start_date.isoformat(),
+                "To date": end_date.isoformat(),
+                "Date": row[5],
+                "Customer name": row[2],
+                "Customer phone": row[1],
+                "Reference ID": row[0],
+                "Company": row[3] or "",
+                "Amount paid": float(row[6] or 0),
+                "Payment mode": row[7],
+                "Paid to": row[4],
+                "Transaction details": row[8] or row[9] or "",
+            }
+        )
+    for row in payments:
+        export_rows.append(
+            {
+                "Record type": "Payment received",
+                "Category": "Advances and payments",
+                "From date": start_date.isoformat(),
+                "To date": end_date.isoformat(),
+                "Date": row[3],
+                "Customer name": row[2],
+                "Customer phone": row[1],
+                "Reference ID": row[0],
+                "Amount paid": abs(float(row[4] or 0)),
+                "Paid to": "Business",
+                "Transaction details": row[5] or "",
+            }
+        )
+    for row in manual_outstanding:
+        export_rows.append(
+            {
+                "Record type": "Outstanding entry",
+                "Category": "Outstanding entries",
+                "From date": start_date.isoformat(),
+                "To date": end_date.isoformat(),
+                "Date": row[3],
+                "Customer name": row[2],
+                "Customer phone": row[1],
+                "Reference ID": row[0],
+                "Amount": float(row[4] or 0),
+                "Transaction details": row[5] or "",
+            }
+        )
+    for row in sales:
+        quantity = int(row[13] or 1)
+        export_rows.append(
+            {
+                "Record type": "Sale",
+                "Category": "Sales",
+                "From date": start_date.isoformat(),
+                "To date": end_date.isoformat(),
+                "Date": row[6],
+                "Customer name": row[2],
+                "Customer phone": row[1],
+                "Reference ID": row[0],
+                "Product": row[4],
+                "Company": row[5],
+                "Quantity": quantity,
+                "Unit price": float(row[7] or 0),
+                "Sale value": float(row[7] or 0) * quantity,
+                "Amount paid": float(row[8] or 0),
+                "Amount pending": float(row[9] or 0),
+            }
+        )
+    for row in warranty_claims:
+        export_rows.append(
+            {
+                "Record type": "Warranty claim",
+                "Category": "Warranty claims",
+                "From date": start_date.isoformat(),
+                "To date": end_date.isoformat(),
+                "Date": row[9],
+                "Customer name": row[11] or "Not recorded",
+                "Customer phone": row[10] or "Not recorded",
+                "Reference ID": row[0],
+                "Product": row[2],
+                "Company": row[3],
+                "Initial size (mm)": float(row[4] or 0),
+                "Current size (mm)": float(row[5] or 0),
+                "Warranty limit (mm)": float(row[7] or 0),
+                "Warranty credit": float(row[8] or 0),
+            }
+        )
+
+    csv_buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(csv_buffer, fieldnames=export_columns, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(export_rows)
+    st.download_button(
+        "Download full report (CSV)",
+        data="\ufeff" + csv_buffer.getvalue(),
+        file_name=f"customer_report_{start_date.isoformat()}_to_{end_date.isoformat()}.csv",
+        mime="text/csv",
+        icon=":material/download:",
+        type="primary",
+    )
+
     activity_rows = [
         {
             "Type": "Customer advance",
@@ -179,7 +321,7 @@ def customer_reports_page():
                 "Unit price": float(row[7] or 0),
                 "Sale value": float(row[7] or 0) * int(row[13] or 1),
                 "Paid": float(row[8] or 0),
-                "Pending": float(row[9] or 0),
+                "Amount pending": float(row[9] or 0),
             }
             for row in sales
         ],
