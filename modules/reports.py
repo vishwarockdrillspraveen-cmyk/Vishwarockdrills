@@ -160,8 +160,22 @@ def customer_reports_page():
         key=lambda row: row["Total Outstanding"],
         reverse=True,
     )
-    st.subheader("Consolidated customer report")
-    st.dataframe(customer_summary_rows, width="stretch", hide_index=True)
+    total_outstanding = sum(row["Total Outstanding"] for row in customer_summary_rows)
+    report_metrics = [
+        ("Total outstanding", total_outstanding),
+        ("Outstanding entries (net)", outstanding_total),
+        ("Sales value", sales_total),
+        ("Sales paid", sales_paid_total),
+        ("Sales pending", sales_pending),
+        ("Customer advances", advance_total),
+        ("Payments received (ledger)", payment_total),
+        ("Warranty claims", warranty_total),
+    ]
+    for offset in range(0, len(report_metrics), 4):
+        metric_columns = st.columns(4)
+        for column, (label, amount) in zip(metric_columns, report_metrics[offset:offset + 4]):
+            with column:
+                st.metric(label, f"₹{amount:,.2f}")
 
     export_columns = [
         "Record type",
