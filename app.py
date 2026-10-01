@@ -21,6 +21,7 @@ main_menu_items = [
     ("Purchase Details", "receipt_long"),
     ("Sales", "point_of_sale"),
     ("Advances", "account_balance_wallet"),
+    ("Reports", "summarize"),
     ("Warranty-Claims", "verified_user"),
 ]
 
@@ -112,3 +113,7 @@ elif menu == "Advances":
 elif menu == "Warranty-Claims":
     from modules.warranties import warranty_page
     warranty_page()
+
+elif menu == "Reports":
+    from modules.reports import customer_reports_page
+    customer_reports_page()
