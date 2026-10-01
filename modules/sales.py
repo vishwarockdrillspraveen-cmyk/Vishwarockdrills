@@ -31,7 +31,7 @@ def _format_customer(customer_row):
 
 def _format_product_row(row):
     sold_by_name = str(row[3] or "Not set").strip()
-    return f"{row[2]} ({row[1]}) - Sold by: {sold_by_name} - ID: {row[0]}"
+    return sold_by_name
 
 
 def _get_customer_phone_from_label(label, customers):
@@ -39,13 +39,6 @@ def _get_customer_phone_from_label(label, customers):
         if _format_customer(customer) == label:
             return customer[0]
     return ""
-
-
-def _get_product_row_from_label(label, product_rows):
-    for row in product_rows:
-        if _format_product_row(row) == label:
-            return row
-    return None
 
 
 def _render_sales_register():
@@ -145,9 +138,11 @@ def sales_page():
                 customer_phone = _get_customer_phone_from_label(selected_customer_label, customers)
                 customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
 
-                product_options = [_format_product_row(row) for row in product_rows]
-                selected_product_label = st.selectbox("Select Product", product_options)
-                selected_product_row = _get_product_row_from_label(selected_product_label, product_rows)
+                selected_product_row = st.selectbox(
+                    "Select Product",
+                    product_rows,
+                    format_func=_format_product_row,
+                )
                 product_id = selected_product_row[0]
                 product_name = selected_product_row[2]
                 product_company = selected_product_row[1]
@@ -253,7 +248,6 @@ def sales_page():
             customer_index = customer_options.index(_format_customer(next((c for c in customers if c[0] == selected_sale_row[1]), customers[0])))
 
             product_rows = get_products()
-            product_options = [_format_product_row(row) for row in product_rows]
             product_index = 0
             if str(selected_sale_row[3]) in [str(row[0]) for row in product_rows]:
                 product_index = [str(row[0]) for row in product_rows].index(str(selected_sale_row[3]))
@@ -263,8 +257,12 @@ def sales_page():
                 customer_phone = _get_customer_phone_from_label(selected_customer_label, customers)
                 customer_name = next((row[1] for row in customers if row[0] == customer_phone), selected_sale_row[2] or "")
 
-                selected_product_label = st.selectbox("Product", product_options, index=product_index)
-                selected_product_row = _get_product_row_from_label(selected_product_label, product_rows)
+                selected_product_row = st.selectbox(
+                    "Product",
+                    product_rows,
+                    index=product_index,
+                    format_func=_format_product_row,
+                )
                 product_id = selected_product_row[0]
                 product_name = selected_product_row[2]
                 product_company = selected_product_row[1]
