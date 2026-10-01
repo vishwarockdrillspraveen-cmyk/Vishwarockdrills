@@ -1,4 +1,5 @@
 import io
+import re
 from datetime import date
 from pathlib import Path
 
@@ -26,6 +27,16 @@ def _format_report_date(value):
         return _as_date(value).strftime("%d-%m-%Y")
     except (TypeError, ValueError):
         return str(value or "")
+
+
+def _report_download_filename(customer_names, start_date, end_date):
+    if len(customer_names) == 1:
+        customer_part = str(customer_names[0] or "Customer")
+    else:
+        customer_part = "Multiple_Customers"
+    customer_part = re.sub(r"[^A-Za-z0-9]+", "_", customer_part).strip("_") or "Customer"
+    date_range = f"{_format_report_date(start_date)}_to_{_format_report_date(end_date)}"
+    return f"{customer_part}_{date_range}.jpg"
 
 
 def _within_range(value, start_date, end_date):
@@ -548,7 +559,11 @@ def customer_reports_page():
     st.download_button(
         "Download full report (JPG)",
         data=report_jpg,
-        file_name=f"customer_transaction_ledger_{_format_report_date(start_date)}_to_{_format_report_date(end_date)}.jpg",
+        file_name=_report_download_filename(
+            [customer_names[phone] for phone in selected_phones],
+            start_date,
+            end_date,
+        ),
         mime="image/jpeg",
         icon=":material/download:",
         type="primary",
