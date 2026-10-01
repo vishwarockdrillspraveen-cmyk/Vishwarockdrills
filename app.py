@@ -2,6 +2,7 @@ import streamlit as st
 
 from database import initialize_database
 from modules.customers import customer_page
+from modules.ui import show_flash_message
 
 initialize_database()
 
@@ -12,6 +13,7 @@ st.set_page_config(
 )
 
 st.title("Vishwa Rock Drills", icon=":material/construction:")
+show_flash_message()
 
 st.sidebar.markdown("### Workspace")
 main_menu_items = [
