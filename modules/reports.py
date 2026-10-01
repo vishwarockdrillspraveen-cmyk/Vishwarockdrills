@@ -171,7 +171,8 @@ def _build_report_jpg(start_date, end_date, selected_customer_names, export_rows
     subtitle_font = _report_font(25)
     header_font = _report_font(20, bold=True)
     row_font = _report_font(21)
-    total_font = _report_font(22, bold=True)
+    amount_font = _report_font(27, bold=True)
+    total_font = _report_font(29, bold=True)
     header_height = 58
     row_height = 66
     totals_height = 76
@@ -218,8 +219,9 @@ def _build_report_jpg(start_date, end_date, selected_customer_names, export_rows
                 f"{transaction['Balance']:,.2f}",
             ]
             x = margin
-            for value, column_width in zip(values, column_widths):
-                draw.text((x + 12, y + 19), _fit_report_text(draw, value, row_font, column_width - 24), font=row_font, fill="#202B2A")
+            for column_index, (value, column_width) in enumerate(zip(values, column_widths)):
+                font = amount_font if column_index in {3, 4, 5} else row_font
+                draw.text((x + 12, y + 19), _fit_report_text(draw, value, font, column_width - 24), font=font, fill="#202B2A")
                 x += column_width
             y += row_height
     else:
