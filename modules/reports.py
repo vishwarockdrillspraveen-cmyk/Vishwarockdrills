@@ -9,6 +9,7 @@ from database import (
     get_customer_advances,
     get_customer_outstanding,
     get_customers,
+    get_products,
     get_sales,
     get_warranty_claims,
 )
@@ -70,8 +71,10 @@ def _fit_report_text(draw, value, font, max_width):
 def _build_report_ledger(export_rows):
     type_order = {
         "Outstanding entry": 0,
+        "Balance": 0,
         "Sale": 1,
         "Customer advance": 2,
+        "Payment": 2,
         "Payment received": 3,
         "Warranty claim": 4,
     }
@@ -94,26 +97,11 @@ def _build_report_ledger(export_rows):
         elif record_type == "Sale":
             debit = float(record.get("Sale value", 0) or 0)
             credit = float(record.get("Amount paid", 0) or 0)
-            details = " | ".join(
-                filter(
-                    None,
-                    [
-                        record.get("Product"),
-                        record.get("Company"),
-                        f"Qty: {record.get('Quantity', '')}",
-                        f"Unit price: {record.get('Unit price', '')}",
-                        f"Pending: {record.get('Amount pending', '')}",
-                    ],
-                )
-            )
+            details = record.get("Product", "")
         elif record_type == "Customer advance":
             credit = float(record.get("Amount paid", 0) or 0)
-            details = " | ".join(
-                filter(
-                    None,
-                    [record.get("Paid to"), record.get("Company"), record.get("Payment mode"), record.get("Transaction details")],
-                )
-            )
+            payment_mode = record.get("Payment mode", "")
+            details = payment_mode if payment_mode in {"Cash", "UPI"} else ""
         elif record_type == "Payment received":
             credit = float(record.get("Amount paid", 0) or 0)
             details = record.get("Transaction details", "")
@@ -138,7 +126,10 @@ def _build_report_ledger(export_rows):
             {
                 "Date": date_text,
                 "Customer": record.get("Customer name", ""),
-                "Type": record_type,
+                "Type": {
+                    "Outstanding entry": "Balance",
+                    "Customer advance": "Payment",
+                }.get(record_type, record_type),
                 "Reference": reference,
                 "Details": details,
                 "Debit": debit,
@@ -164,7 +155,7 @@ def _build_report_ledger(export_rows):
     return transactions, total_debit, total_credit, balance
 
 
-def _build_report_jpg(start_date, end_date, selected_phones, export_rows):
+def _build_report_jpg(start_date, end_date, selected_customer_names, export_rows):
     width = 1800
     margin = 64
     content_width = width - (margin * 2)
@@ -181,16 +172,22 @@ def _build_report_jpg(start_date, end_date, selected_phones, export_rows):
     total_font = _report_font(16, bold=True)
 
     draw.rounded_rectangle((margin, 36, width - margin, 150), radius=14, fill="#FFFFFF", outline="#D8E2DD", width=2)
-    draw.text((margin + 28, 52), "Vishwa Rock Drills | Customer transaction ledger", font=title_font, fill="#174F50")
+    title_text = ", ".join(str(name) for name in selected_customer_names)
+    draw.text(
+        (margin + 28, 52),
+        _fit_report_text(draw, title_text, title_font, content_width - 56),
+        font=title_font,
+        fill="#174F50",
+    )
     draw.text(
         (margin + 30, 112),
-        f"{start_date.isoformat()} to {end_date.isoformat()}  |  {len(selected_phones)} selected customer(s)  |  Debit increases balance; credit reduces balance",
+        f"Date range: {start_date.isoformat()} to {end_date.isoformat()}",
         font=subtitle_font,
         fill="#52615D",
     )
 
-    headers = ["Date", "Customer", "Transaction", "Reference", "Details", "Debit", "Credit", "Balance"]
-    base_widths = [120, 190, 175, 90, 520, 175, 175, 217]
+    headers = ["Date", "Transaction", "Reference", "Details", "Debit", "Credit", "Balance"]
+    base_widths = [135, 200, 105, 590, 200, 200, 232]
     width_scale = content_width / sum(base_widths)
     column_widths = [int(column_width * width_scale) for column_width in base_widths]
     column_widths[-1] += content_width - sum(column_widths)
@@ -208,13 +205,12 @@ def _build_report_jpg(start_date, end_date, selected_phones, export_rows):
             draw.rectangle((margin, y, width - margin, y + row_height), fill=background)
             values = [
                 transaction["Date"],
-                transaction["Customer"],
                 transaction["Type"],
                 transaction["Reference"],
                 transaction["Details"],
-                f"₹{transaction['Debit']:,.2f}" if transaction["Debit"] else "-",
-                f"₹{transaction['Credit']:,.2f}" if transaction["Credit"] else "-",
-                f"₹{transaction['Balance']:,.2f}",
+                f"{transaction['Debit']:,.2f}" if transaction["Debit"] else "-",
+                f"{transaction['Credit']:,.2f}" if transaction["Credit"] else "-",
+                f"{transaction['Balance']:,.2f}",
             ]
             x = margin
             for value, column_width in zip(values, column_widths):
@@ -229,7 +225,7 @@ def _build_report_jpg(start_date, end_date, selected_phones, export_rows):
 
     y += 8
     draw.rectangle((margin, y, width - margin, y + 52), fill="#DDE9E3")
-    footer_values = ["TOTAL", "", "", "", "", f"₹{total_debit:,.2f}", f"₹{total_credit:,.2f}", f"₹{balance:,.2f}"]
+    footer_values = ["TOTAL", "", "", "", f"{total_debit:,.2f}", f"{total_credit:,.2f}", f"{balance:,.2f}"]
     x = margin
     for value, column_width in zip(footer_values, column_widths):
         draw.text((x + 9, y + 17), _fit_report_text(draw, value, total_font, column_width - 16), font=total_font, fill="#174F50")
@@ -298,6 +294,7 @@ def customer_reports_page():
         row for row in get_sales()
         if str(row[1]) in selected_phone_set and _within_range(row[6], start_date, end_date)
     ]
+    products_by_id = {str(row[0]): row for row in get_products()}
     warranty_claims = [
         row for row in get_warranty_claims()
         if str(row[10] or "") in selected_phone_set and _within_range(row[9], start_date, end_date)
@@ -496,6 +493,8 @@ def customer_reports_page():
         )
     for row in sales:
         quantity = int(row[13] or 1)
+        product = products_by_id.get(str(row[3]))
+        sold_by_name = str(product[3] or "").strip() if product else ""
         export_rows.append(
             {
                 "Record type": "Sale",
@@ -506,7 +505,7 @@ def customer_reports_page():
                 "Customer name": row[2],
                 "Customer phone": row[1],
                 "Reference ID": row[0],
-                "Product": row[4],
+                "Product": sold_by_name or row[4],
                 "Company": row[5],
                 "Quantity": quantity,
                 "Unit price": float(row[7] or 0),
@@ -538,7 +537,7 @@ def customer_reports_page():
     report_jpg = _build_report_jpg(
         start_date,
         end_date,
-        selected_phones,
+        [customer_names[phone] for phone in selected_phones],
         export_rows,
     )
     st.download_button(
