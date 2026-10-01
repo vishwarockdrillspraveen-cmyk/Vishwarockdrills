@@ -100,25 +100,68 @@ def customer_reports_page():
 
     advance_total = sum(float(row[6] or 0) for row in customer_advances)
     payment_total = sum(abs(float(row[4] or 0)) for row in payments)
-    outstanding_total = sum(float(row[4] or 0) for row in manual_outstanding)
+    outstanding_total = sum(float(row[4] or 0) for row in outstanding_entries)
     sales_total = sum(float(row[7] or 0) * int(row[13] or 1) for row in sales)
+    sales_paid_total = sum(float(row[8] or 0) for row in sales)
     sales_pending = sum(float(row[9] or 0) for row in sales)
     warranty_total = sum(float(row[8] or 0) for row in warranty_claims)
 
     st.caption(f"Reporting period: {start_date.isoformat()} to {end_date.isoformat()}")
     summary_rows = [
         ("Customer advances", advance_total),
-        ("Payments received", payment_total),
-        ("Outstanding entries", outstanding_total),
+        ("Payments received (ledger)", payment_total),
+        ("Outstanding entries (net)", outstanding_total),
         ("Sales value", sales_total),
+        ("Sales paid", sales_paid_total),
         ("Sales pending", sales_pending),
         ("Warranty claims", warranty_total),
     ]
-    for offset in range(0, len(summary_rows), 3):
-        metric_cols = st.columns(3)
-        for column, (label, amount) in zip(metric_cols, summary_rows[offset:offset + 3]):
-            with column:
-                st.metric(label, f"₹{amount:,.2f}")
+
+    customer_names = {str(row[0]): row[1] for row in customers}
+    customer_summary = {
+        phone: {
+            "Customer Phone": phone,
+            "Customer Name": customer_names.get(phone, ""),
+            "Outstanding Entries (Net)": 0.0,
+            "Sales Value": 0.0,
+            "Sales Paid": 0.0,
+            "Sales Outstanding": 0.0,
+            "Payments Received (Ledger)": 0.0,
+            "Customer Advances (Credit)": 0.0,
+            "Warranty Claims (Credit)": 0.0,
+            "Total Outstanding": 0.0,
+        }
+        for phone in selected_phones
+    }
+    for row in outstanding_entries:
+        customer_summary[str(row[1])]["Outstanding Entries (Net)"] += float(row[4] or 0)
+    for row in payments:
+        customer_summary[str(row[1])]["Payments Received (Ledger)"] += abs(float(row[4] or 0))
+    for row in customer_advances:
+        customer_summary[str(row[1])]["Customer Advances (Credit)"] += float(row[6] or 0)
+    for row in sales:
+        customer = customer_summary[str(row[1])]
+        quantity = int(row[13] or 1)
+        customer["Sales Value"] += float(row[7] or 0) * quantity
+        customer["Sales Paid"] += float(row[8] or 0)
+        customer["Sales Outstanding"] += float(row[9] or 0)
+    for row in warranty_claims:
+        customer_summary[str(row[10])]["Warranty Claims (Credit)"] += float(row[8] or 0)
+    for customer in customer_summary.values():
+        customer["Total Outstanding"] = (
+            customer["Outstanding Entries (Net)"]
+            + customer["Sales Outstanding"]
+            - customer["Customer Advances (Credit)"]
+            - customer["Warranty Claims (Credit)"]
+        )
+
+    customer_summary_rows = sorted(
+        customer_summary.values(),
+        key=lambda row: row["Total Outstanding"],
+        reverse=True,
+    )
+    st.subheader("Consolidated customer report")
+    st.dataframe(customer_summary_rows, width="stretch", hide_index=True)
 
     export_columns = [
         "Record type",
@@ -136,6 +179,13 @@ def customer_reports_page():
         "Sale value",
         "Amount paid",
         "Amount pending",
+        "Outstanding entries (net)",
+        "Sales paid",
+        "Sales outstanding",
+        "Payments received (ledger)",
+        "Customer advances (credit)",
+        "Warranty claims (credit)",
+        "Total outstanding",
         "Amount",
         "Payment mode",
         "Paid to",
@@ -154,6 +204,25 @@ def customer_reports_page():
                 "From date": start_date.isoformat(),
                 "To date": end_date.isoformat(),
                 "Amount": amount,
+            }
+        )
+    for row in customer_summary_rows:
+        export_rows.append(
+            {
+                "Record type": "Customer summary",
+                "Category": "Consolidated customer report",
+                "From date": start_date.isoformat(),
+                "To date": end_date.isoformat(),
+                "Customer name": row["Customer Name"],
+                "Customer phone": row["Customer Phone"],
+                "Outstanding entries (net)": row["Outstanding Entries (Net)"],
+                "Sales value": row["Sales Value"],
+                "Sales paid": row["Sales Paid"],
+                "Sales outstanding": row["Sales Outstanding"],
+                "Payments received (ledger)": row["Payments Received (Ledger)"],
+                "Customer advances (credit)": row["Customer Advances (Credit)"],
+                "Warranty claims (credit)": row["Warranty Claims (Credit)"],
+                "Total outstanding": row["Total Outstanding"],
             }
         )
 
@@ -289,60 +358,61 @@ def customer_reports_page():
         for row in payments
     )
     activity_rows.sort(key=lambda row: row["Date"], reverse=True)
-    _render_section("Advances and payments", activity_rows, "No advances or payments in this date range.")
+    with st.expander("Transaction details", expanded=False):
+        _render_section("Advances and payments", activity_rows, "No advances or payments in this date range.")
 
-    _render_section(
-        "Outstanding entries",
-        [
-            {
-                "Entry ID": row[0],
-                "Date": row[3],
-                "Customer": row[2],
-                "Phone": row[1],
-                "Outstanding amount": float(row[4] or 0),
-                "Remarks": row[5] or "-",
-            }
-            for row in manual_outstanding
-        ],
-        "No outstanding entries in this date range.",
-    )
+        _render_section(
+            "Outstanding entries",
+            [
+                {
+                    "Entry ID": row[0],
+                    "Date": row[3],
+                    "Customer": row[2],
+                    "Phone": row[1],
+                    "Outstanding amount": float(row[4] or 0),
+                    "Remarks": row[5] or "-",
+                }
+                for row in manual_outstanding
+            ],
+            "No outstanding entries in this date range.",
+        )
 
-    _render_section(
-        "Sales",
-        [
-            {
-                "Sale ID": row[0],
-                "Date": row[6],
-                "Customer": row[2],
-                "Phone": row[1],
-                "Product": row[4],
-                "Company": row[5],
-                "Quantity": int(row[13] or 1),
-                "Unit price": float(row[7] or 0),
-                "Sale value": float(row[7] or 0) * int(row[13] or 1),
-                "Paid": float(row[8] or 0),
-                "Amount pending": float(row[9] or 0),
-            }
-            for row in sales
-        ],
-        "No sales in this date range.",
-    )
+        _render_section(
+            "Sales",
+            [
+                {
+                    "Sale ID": row[0],
+                    "Date": row[6],
+                    "Customer": row[2],
+                    "Phone": row[1],
+                    "Product": row[4],
+                    "Company": row[5],
+                    "Quantity": int(row[13] or 1),
+                    "Unit price": float(row[7] or 0),
+                    "Sale value": float(row[7] or 0) * int(row[13] or 1),
+                    "Paid": float(row[8] or 0),
+                    "Amount pending": float(row[9] or 0),
+                }
+                for row in sales
+            ],
+            "No sales in this date range.",
+        )
 
-    _render_section(
-        "Warranty claims",
-        [
-            {
-                "Claim ID": row[0],
-                "Date": row[9],
-                "Customer": row[11] or "Not recorded",
-                "Phone": row[10] or "Not recorded",
-                "Product": row[2],
-                "Company": row[3],
-                "Initial mm": float(row[4] or 0),
-                "Current mm": float(row[5] or 0),
-                "Warranty credit": float(row[8] or 0),
-            }
-            for row in warranty_claims
-        ],
-        "No warranty claims in this date range.",
-    )
+        _render_section(
+            "Warranty claims",
+            [
+                {
+                    "Claim ID": row[0],
+                    "Date": row[9],
+                    "Customer": row[11] or "Not recorded",
+                    "Phone": row[10] or "Not recorded",
+                    "Product": row[2],
+                    "Company": row[3],
+                    "Initial mm": float(row[4] or 0),
+                    "Current mm": float(row[5] or 0),
+                    "Warranty credit": float(row[8] or 0),
+                }
+                for row in warranty_claims
+            ],
+            "No warranty claims in this date range.",
+        )
