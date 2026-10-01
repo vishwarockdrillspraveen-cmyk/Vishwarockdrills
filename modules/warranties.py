@@ -1,7 +1,7 @@
 import streamlit as st
 from datetime import datetime
 
-from database import add_warranty_claim, delete_warranty_claim, get_inventory_products_for_sale, get_products, get_warranty_claims
+from database import add_warranty_claim, delete_warranty_claim, get_products, get_warranty_claims
 
 
 def _calculate_warranty_value(sale_price, initial_mm, current_mm, warranty_limit_mm):
@@ -28,44 +28,26 @@ def warranty_page():
     st.header("Warranty claims", icon=":material/verified_user:")
     st.caption("Assess product wear and track eligible warranty returns.")
 
-    inventory_products = get_inventory_products_for_sale()
-    if not inventory_products:
-        st.info("No products are available in inventory. Add product inventory first before processing warranty claims.")
+    products = get_products()
+    if not products:
+        st.info("No products are available. Add a product in Product Management before processing warranty claims.")
         return
 
-    products = get_products()
-    product_lookup = {str(row[0]): row for row in products}
-
     product_options = {
-        f"{row[1]} ({row[2]}) | ID: {row[0]}": row
-        for row in inventory_products
+        f"{row[2]} ({row[1]}) | ID: {row[0]}": row
+        for row in products
     }
     product_labels = list(product_options)
-    previous_selection = st.session_state.get("warranty_selected_product")
-    if previous_selection and previous_selection not in product_options:
-        migrated_selection = next(
-            (
-                label for label, row in product_options.items()
-                if previous_selection == f"{row[1]} ({row[2]})"
-            ),
-            product_labels[0],
-        )
-        st.session_state.warranty_selected_product = migrated_selection
-
     selected_product_label = st.selectbox(
         "Select product",
         product_labels,
         key="warranty_selected_product",
     )
-    selected_inventory_row = product_options[selected_product_label]
-    master_row = product_lookup.get(str(selected_inventory_row[0]))
-    if master_row is None:
-        st.warning("This inventory product is missing from the product master. Check its Product ID.")
-        return
+    master_row = product_options[selected_product_label]
 
-    product_id = selected_inventory_row[0]
-    product_name = selected_inventory_row[1]
-    company_name = selected_inventory_row[2]
+    product_id = master_row[0]
+    product_name = master_row[2]
+    company_name = master_row[1]
     sale_price = float(master_row[8] or 0)
     initial_mm = float(str(master_row[5] or 0).strip() or 0)
     warranty_limit_mm = float(master_row[7] or 0)

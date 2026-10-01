@@ -673,7 +673,13 @@ def get_customer_report():
         LEFT JOIN (
             SELECT
                 customer_phone,
-                SUM(pending_amount) AS sales_outstanding
+                SUM(
+                    CASE
+                        WHEN actual_price * COALESCE(quantity, 1) - paid_amount > 0
+                        THEN actual_price * COALESCE(quantity, 1) - paid_amount
+                        ELSE 0
+                    END
+                ) AS sales_outstanding
             FROM sales
             GROUP BY customer_phone
         ) s ON s.customer_phone = c.phone
@@ -823,12 +829,18 @@ def get_product_warranty_details(product_id):
     )
 
 
+def _calculate_sale_pending(actual_price, quantity, paid_amount):
+    sale_total = float(actual_price or 0) * int(quantity or 1)
+    return max(sale_total - float(paid_amount or 0), 0.0)
+
+
 def add_sale(customer_phone, product_id, product_name, product_company, sale_date, actual_price, paid_amount, pending_amount,
              warranty_applicable=False, warranty_start_date=None, warranty_end_date=None, quantity=1, customer_name=None):
     valid_sale_date = validate_date_value(sale_date, "Sale Date")
     valid_warranty_start_date = validate_date_value(warranty_start_date, "Warranty Start Date") if warranty_applicable and warranty_start_date else None
     valid_warranty_end_date = validate_date_value(warranty_end_date, "Warranty End Date") if warranty_applicable and warranty_end_date else None
     valid_quantity = int(quantity or 1)
+    valid_pending_amount = _calculate_sale_pending(actual_price, valid_quantity, paid_amount)
 
     clean_phone = str(customer_phone or "").strip()
     final_customer_name = str(customer_name or "").strip()
@@ -860,7 +872,7 @@ def add_sale(customer_phone, product_id, product_name, product_company, sale_dat
             valid_sale_date,
             float(actual_price or 0),
             float(paid_amount or 0),
-            float(pending_amount or 0),
+            valid_pending_amount,
             int(bool(warranty_applicable)),
             valid_warranty_start_date,
             valid_warranty_end_date,
@@ -889,6 +901,7 @@ def update_sale(sale_id, customer_phone, product_id, product_name, product_compa
     valid_warranty_start_date = validate_date_value(warranty_start_date, "Warranty Start Date") if warranty_applicable and warranty_start_date else None
     valid_warranty_end_date = validate_date_value(warranty_end_date, "Warranty End Date") if warranty_applicable and warranty_end_date else None
     valid_quantity = int(quantity or 1)
+    valid_pending_amount = _calculate_sale_pending(actual_price, valid_quantity, paid_amount)
 
     clean_phone = str(customer_phone or "").strip()
     final_customer_name = str(customer_name or "").strip()
@@ -931,7 +944,7 @@ def update_sale(sale_id, customer_phone, product_id, product_name, product_compa
             valid_sale_date,
             float(actual_price or 0),
             float(paid_amount or 0),
-            float(pending_amount or 0),
+            valid_pending_amount,
             int(bool(warranty_applicable)),
             valid_warranty_start_date,
             valid_warranty_end_date,
@@ -979,7 +992,11 @@ def get_sales():
             sale_date,
             actual_price,
             paid_amount,
-            pending_amount,
+            CASE
+                WHEN actual_price * COALESCE(quantity, 1) - paid_amount > 0
+                THEN actual_price * COALESCE(quantity, 1) - paid_amount
+                ELSE 0
+            END AS pending_amount,
             warranty_applicable,
             warranty_start_date,
             warranty_end_date,

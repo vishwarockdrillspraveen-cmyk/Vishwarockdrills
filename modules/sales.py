@@ -179,7 +179,7 @@ def sales_page():
                     quantity = st.number_input("Quantity", min_value=1, step=1, value=1)
                 with sale_col2:
                     paid_amount = 0.0
-                    pending_amount = max(actual_price - paid_amount, 0.0)
+                    pending_amount = max(actual_price * quantity - paid_amount, 0.0)
 
                 st.markdown("### Product Summary")
                 summary_col1, summary_col2, summary_col3 = st.columns(3)
@@ -296,7 +296,7 @@ def sales_page():
                 edited_actual_price = default_edit_price
                 edited_quantity = st.number_input("Quantity", min_value=1, step=1, value=int(selected_sale_row[13] if len(selected_sale_row) > 13 else 1))
                 edited_paid_amount = float(selected_sale_row[8] or 0)
-                edited_pending_amount = max(edited_actual_price - edited_paid_amount, 0.0)
+                edited_pending_amount = max(edited_actual_price * edited_quantity - edited_paid_amount, 0.0)
 
                 warranty_applicable = bool(selected_sale_row[10])
                 warranty_start_date = selected_sale_row[11]
