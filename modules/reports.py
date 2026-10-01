@@ -75,34 +75,6 @@ def _fit_report_text(draw, value, font, max_width):
     return text + "..."
 
 
-def _wrap_report_text(draw, value, font, max_width):
-    words = str(value or "").split()
-    if not words:
-        return [""]
-
-    lines = []
-    current_line = ""
-    for word in words:
-        candidate = f"{current_line} {word}".strip()
-        if draw.textlength(candidate, font=font) <= max_width:
-            current_line = candidate
-            continue
-
-        if current_line:
-            lines.append(current_line)
-        current_line = ""
-        for character in word:
-            candidate = current_line + character
-            if draw.textlength(candidate, font=font) > max_width and current_line:
-                lines.append(current_line)
-                current_line = character
-            else:
-                current_line = candidate
-    if current_line:
-        lines.append(current_line)
-    return lines
-
-
 def _build_report_ledger(export_rows):
     type_order = {
         "Outstanding entry": 0,
@@ -191,92 +163,76 @@ def _build_report_ledger(export_rows):
 
 
 def _build_report_jpg(start_date, end_date, selected_customer_names, export_rows):
-    width = 900
-    margin = 36
+    width = 1800
+    margin = 64
     content_width = width - (margin * 2)
     transactions, total_debit, total_credit, balance = _build_report_ledger(export_rows)
-    title_font = _report_font(38, bold=True)
-    subtitle_font = _report_font(24)
-    transaction_font = _report_font(29, bold=True)
-    detail_font = _report_font(28)
-    amount_label_font = _report_font(19, bold=True)
-    amount_font = _report_font(28, bold=True)
-    total_font = _report_font(24, bold=True)
-
-    card_layouts = []
-    measure_draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-    for transaction in transactions:
-        detail_lines = _wrap_report_text(measure_draw, transaction["Details"], detail_font, content_width - 44)
-        details_height = max(len(detail_lines), 1) * 38
-        card_height = 54 + details_height + 12 + 74 + 18
-        card_layouts.append((transaction, detail_lines, card_height))
-
-    header_height = 150
-    totals_height = 118
-    content_gap = 14
-    ledger_height = sum(card[2] + content_gap for card in card_layouts) if card_layouts else 78 + content_gap
-    height = max(1200, 40 + header_height + 22 + ledger_height + totals_height + 40)
+    title_font = _report_font(42, bold=True)
+    subtitle_font = _report_font(25)
+    header_font = _report_font(20, bold=True)
+    row_font = _report_font(21)
+    total_font = _report_font(22, bold=True)
+    header_height = 58
+    row_height = 66
+    totals_height = 76
+    height = 208 + header_height + (max(len(transactions), 1) * row_height) + totals_height + 36
     image = Image.new("RGB", (width, height), "#F3F6F4")
     draw = ImageDraw.Draw(image)
 
-    draw.rounded_rectangle((margin, 28, width - margin, 28 + header_height), radius=16, fill="#FFFFFF", outline="#D8E2DD", width=2)
+    draw.rounded_rectangle((margin, 30, width - margin, 154), radius=16, fill="#FFFFFF", outline="#D8E2DD", width=2)
     title_text = ", ".join(str(name) for name in selected_customer_names)
     draw.text(
-        (margin + 24, 48),
-        _fit_report_text(draw, title_text, title_font, content_width - 48),
+        (margin + 28, 48),
+        _fit_report_text(draw, title_text, title_font, content_width - 56),
         font=title_font,
         fill="#174F50",
     )
     draw.text(
-        (margin + 24, 112),
+        (margin + 30, 108),
         f"Date range: {_format_report_date(start_date)} to {_format_report_date(end_date)}",
         font=subtitle_font,
         fill="#52615D",
     )
 
-    y = 28 + header_height + 22
-    if card_layouts:
-        for row_index, (transaction, detail_lines, card_height) in enumerate(card_layouts):
-            card_bottom = y + card_height
+    headers = ["Date", "Transaction", "Details", "Debit", "Credit", "Balance"]
+    column_widths = [175, 220, 420, 245, 245, 303]
+    column_widths[-1] += content_width - sum(column_widths)
+    y = 178
+    draw.rectangle((margin, y, width - margin, y + header_height), fill="#17666B")
+    x = margin
+    for label, column_width in zip(headers, column_widths):
+        draw.text((x + 12, y + 17), label, font=header_font, fill="#FFFFFF")
+        x += column_width
+    y += header_height
+
+    if transactions:
+        for row_index, transaction in enumerate(transactions):
             background = "#FFFFFF" if row_index % 2 == 0 else "#EAF0ED"
-            draw.rounded_rectangle((margin, y, width - margin, card_bottom), radius=12, fill=background, outline="#D8E2DD", width=1)
-            headline = f"{_format_report_date(transaction['Date'])}  |  {transaction['Type']}  |  Ref {transaction['Reference']}"
-            draw.text((margin + 20, y + 17), _fit_report_text(draw, headline, transaction_font, content_width - 40), font=transaction_font, fill="#174F50")
-
-            detail_y = y + 56
-            for detail_line in detail_lines:
-                draw.text((margin + 20, detail_y), detail_line, font=detail_font, fill="#35413E")
-                detail_y += 38
-
-            amount_y = detail_y + 12
-            amount_width = (content_width - 40) // 3
-            amount_cells = [
-                ("DEBIT", transaction["Debit"]),
-                ("CREDIT", transaction["Credit"]),
-                ("BALANCE", transaction["Balance"]),
+            draw.rectangle((margin, y, width - margin, y + row_height), fill=background)
+            values = [
+                _format_report_date(transaction["Date"]),
+                transaction["Type"],
+                transaction["Details"],
+                f"{transaction['Debit']:,.2f}" if transaction["Debit"] else "-",
+                f"{transaction['Credit']:,.2f}" if transaction["Credit"] else "-",
+                f"{transaction['Balance']:,.2f}",
             ]
-            for cell_index, (label, amount) in enumerate(amount_cells):
-                cell_x = margin + 20 + cell_index * amount_width
-                draw.text((cell_x, amount_y), label, font=amount_label_font, fill="#52615D")
-                draw.text((cell_x, amount_y + 26), f"{amount:,.2f}" if amount else "-", font=amount_font, fill="#202B2A")
-            y = card_bottom + content_gap
+            x = margin
+            for value, column_width in zip(values, column_widths):
+                draw.text((x + 12, y + 19), _fit_report_text(draw, value, row_font, column_width - 24), font=row_font, fill="#202B2A")
+                x += column_width
+            y += row_height
     else:
-        draw.rounded_rectangle((margin, y, width - margin, y + 78), radius=12, fill="#FFFFFF", outline="#D8E2DD", width=1)
-        draw.text((margin + 20, y + 24), "No transactions in this date range.", font=detail_font, fill="#52615D")
-        y += 78 + content_gap
+        draw.rectangle((margin, y, width - margin, y + row_height), fill="#FFFFFF")
+        draw.text((margin + 12, y + 19), "No transactions in this date range.", font=row_font, fill="#52615D")
+        y += row_height
 
-    draw.rounded_rectangle((margin, y, width - margin, y + totals_height), radius=14, fill="#DDE9E3", outline="#BDD0C7", width=2)
-    draw.text((margin + 20, y + 15), "TOTALS", font=total_font, fill="#174F50")
-    total_labels = [
-        ("DEBIT", total_debit),
-        ("CREDIT", total_credit),
-        ("CLOSING BALANCE", balance),
-    ]
-    amount_width = (content_width - 40) // 3
-    for cell_index, (label, amount) in enumerate(total_labels):
-        cell_x = margin + 20 + cell_index * amount_width
-        draw.text((cell_x, y + 52), label, font=amount_label_font, fill="#52615D")
-        draw.text((cell_x, y + 78), f"{amount:,.2f}", font=amount_font, fill="#174F50")
+    draw.rectangle((margin, y, width - margin, y + totals_height), fill="#DDE9E3")
+    footer_values = ["TOTAL", "", "", f"{total_debit:,.2f}", f"{total_credit:,.2f}", f"{balance:,.2f}"]
+    x = margin
+    for value, column_width in zip(footer_values, column_widths):
+        draw.text((x + 12, y + 22), _fit_report_text(draw, value, total_font, column_width - 24), font=total_font, fill="#174F50")
+        x += column_width
 
     output = io.BytesIO()
     image.save(output, format="JPEG", quality=96, subsampling=0, optimize=True)
