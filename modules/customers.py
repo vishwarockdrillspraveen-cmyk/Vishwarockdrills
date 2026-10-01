@@ -17,6 +17,37 @@ def customer_page():
         ["Add", "Edit", "Delete"],
         "Add",
     )
+    customers = get_customers()
+
+    st.subheader("Customer directory")
+    if customers:
+        customer_filter = st.text_input(
+            "Filter customers",
+            placeholder="Search by name, phone, or email",
+            icon=":material/search:",
+            key="customer_directory_filter",
+        ).strip().lower()
+        visible_customers = [
+            row for row in customers
+            if not customer_filter or customer_filter in " ".join(str(value or "") for value in row).lower()
+        ]
+        st.caption(f"Showing {len(visible_customers)} of {len(customers)} customers")
+        st.dataframe(
+            [
+                {
+                    "Customer name": row[1],
+                    "Phone number": row[0],
+                    "Email": row[2],
+                    "Created": row[3],
+                    "Last updated": row[4],
+                }
+                for row in visible_customers
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+    else:
+        st.caption("No customers have been added yet.")
 
     if selected_action == "Add":
             st.subheader("Add customer")

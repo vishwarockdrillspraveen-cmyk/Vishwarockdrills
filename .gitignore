@@ -2,7 +2,17 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-database/*.db
+# Local database files and persisted data artifacts
+*.db
+*.db-*
+*.db.bak
+*.sqlite
+*.sqlite-*
+*.sqlite.bak
+*.sqlite3
+*.sqlite3-*
+*.sqlite3.bak
+*.dump
 uploads/
 .venv/
 .pytest_cache/

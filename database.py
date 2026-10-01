@@ -658,7 +658,10 @@ def get_customer_report():
             c.customer_name,
             COALESCE(so.manual_outstanding, 0) AS manual_outstanding,
             COALESCE(s.sales_outstanding, 0) AS sales_outstanding,
-            COALESCE(so.manual_outstanding, 0) + COALESCE(s.sales_outstanding, 0) AS total_outstanding
+            COALESCE(ca.customer_advances, 0) AS customer_advances,
+            COALESCE(so.manual_outstanding, 0)
+                + COALESCE(s.sales_outstanding, 0)
+                - COALESCE(ca.customer_advances, 0) AS total_outstanding
         FROM customers c
         LEFT JOIN (
             SELECT
@@ -674,6 +677,13 @@ def get_customer_report():
             FROM sales
             GROUP BY customer_phone
         ) s ON s.customer_phone = c.phone
+        LEFT JOIN (
+            SELECT
+                customer_phone,
+                SUM(amount_paid) AS customer_advances
+            FROM customer_advances
+            GROUP BY customer_phone
+        ) ca ON ca.customer_phone = c.phone
         ORDER BY total_outstanding DESC, c.customer_name
         """
     ).fetchall()

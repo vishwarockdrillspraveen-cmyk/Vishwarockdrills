@@ -446,9 +446,10 @@ def _render_customer_report():
             {
                 "Customer Phone": row[0],
                 "Customer Name": row[1],
-                "Opening/Manual Outstanding": float(row[2] or 0),
+                "Outstanding Entries (Net)": float(row[2] or 0),
                 "Sales Outstanding": float(row[3] or 0),
-                "Total Outstanding": float(row[4] or 0),
+                "Customer Advances (Credit)": float(row[4] or 0),
+                "Total Outstanding": float(row[5] or 0),
             }
             for row in rows
         ],
