@@ -1,5 +1,6 @@
 import io
 import re
+import zipfile
 from datetime import date
 from pathlib import Path
 
@@ -252,6 +253,22 @@ def _build_report_jpg(start_date, end_date, selected_customer_names, export_rows
     return output.getvalue()
 
 
+def _build_customer_reports_zip(start_date, end_date, selected_phones, customer_names, export_rows):
+    customer_reports = io.BytesIO()
+    used_filenames = set()
+    with zipfile.ZipFile(customer_reports, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for phone in selected_phones:
+            customer_name = customer_names[phone]
+            customer_rows = [row for row in export_rows if str(row.get("Customer phone", "")) == phone]
+            report_jpg = _build_report_jpg(start_date, end_date, [customer_name], customer_rows)
+            filename = _report_download_filename([customer_name], start_date, end_date)
+            if filename.lower() in used_filenames:
+                filename = _report_download_filename([f"{customer_name}_{phone}"], start_date, end_date)
+            used_filenames.add(filename.lower())
+            archive.writestr(filename, report_jpg)
+    return customer_reports.getvalue()
+
+
 def customer_reports_page():
     st.header("Reports", icon=":material/summarize:")
     st.caption("Review customer activity across a selected date range.")
@@ -265,18 +282,19 @@ def customer_reports_page():
         str(row[0]): f"{row[1]} ({row[0]})"
         for row in customers
     }
+    all_customers_option = "__all_customers__"
     today = date.today()
     default_start = today.replace(day=1)
 
     customer_col, start_col, end_col = st.columns([2, 1, 1])
     with customer_col:
-        selected_phones = st.multiselect(
-            "Customers",
-            options=list(customer_labels),
-            format_func=lambda phone: customer_labels[phone],
-            placeholder="Select one or more customers",
-            key="customer_report_customers",
+        customer_selection = st.selectbox(
+            "Customer",
+            options=[all_customers_option, *customer_labels],
+            format_func=lambda phone: "All customers" if phone == all_customers_option else customer_labels[phone],
+            key="customer_report_customer",
         )
+    selected_phones = list(customer_labels) if customer_selection == all_customers_option else [customer_selection]
     with start_col:
         start_date = st.date_input("From date", value=default_start, key="customer_report_start")
     with end_col:
@@ -550,21 +568,18 @@ def customer_reports_page():
             }
         )
 
-    report_jpg = _build_report_jpg(
+    customer_reports = _build_customer_reports_zip(
         start_date,
         end_date,
-        [customer_names[phone] for phone in selected_phones],
+        selected_phones,
+        customer_names,
         export_rows,
     )
     st.download_button(
-        "Download full report (JPG)",
-        data=report_jpg,
-        file_name=_report_download_filename(
-            [customer_names[phone] for phone in selected_phones],
-            start_date,
-            end_date,
-        ),
-        mime="image/jpeg",
+        "Download customer reports (ZIP)",
+        data=customer_reports,
+        file_name=f"customer_reports_{_format_report_date(start_date)}_to_{_format_report_date(end_date)}.zip",
+        mime="application/zip",
         icon=":material/download:",
         type="primary",
     )

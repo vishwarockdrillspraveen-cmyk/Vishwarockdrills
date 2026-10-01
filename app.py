@@ -45,8 +45,33 @@ for item, icon in main_menu_items:
 menu = st.session_state.menu
 
 if menu == "Dashboard":
-    st.header("Dashboard")
-    st.write("Coming Soon")
+    st.header("Dashboard", icon=":material/dashboard:")
+    st.caption("Quick access")
+    dashboard_links = [
+        ("Customer Advances", "payments", "Advances", "Customer Advances"),
+        ("Customer Outstanding", "account_balance_wallet", "Advances", "Customer Outstanding"),
+        ("Sales", "point_of_sale", "Sales", None),
+        ("Reports", "summarize", "Reports", None),
+        ("Warranty Claims", "verified_user", "Warranty-Claims", None),
+    ]
+    for row_start in range(0, len(dashboard_links), 3):
+        shortcut_columns = st.columns(3)
+        for column, (label, icon, target_menu, target_submenu) in zip(
+            shortcut_columns,
+            dashboard_links[row_start:row_start + 3],
+        ):
+            with column:
+                if st.button(
+                    label,
+                    key=f"dashboard_shortcut_{label}",
+                    icon=f":material/{icon}:",
+                    type="secondary",
+                    width="stretch",
+                ):
+                    st.session_state.menu = target_menu
+                    if target_submenu:
+                        st.session_state.advances_submenu = target_submenu
+                    st.rerun()
 
 elif menu == "Customers":
     customer_page()
