@@ -1421,13 +1421,67 @@ def initialize_database():
     cursor = conn.cursor()
     if is_postgres():
         pg_safe_alters = [
+            # sales
+            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_phone TEXT DEFAULT ''",
             "ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_name TEXT DEFAULT ''",
+            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS product_id TEXT DEFAULT ''",
+            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS product_name TEXT DEFAULT ''",
+            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS product_company TEXT DEFAULT ''",
+            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_date TEXT DEFAULT ''",
+            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS actual_price REAL DEFAULT 0",
+            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS paid_amount REAL DEFAULT 0",
             "ALTER TABLE sales ADD COLUMN IF NOT EXISTS pending_amount REAL DEFAULT 0",
-            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1",
             "ALTER TABLE sales ADD COLUMN IF NOT EXISTS warranty_applicable INTEGER DEFAULT 0",
             "ALTER TABLE sales ADD COLUMN IF NOT EXISTS warranty_start_date TEXT",
             "ALTER TABLE sales ADD COLUMN IF NOT EXISTS warranty_end_date TEXT",
+            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1",
+            # inventory_tracking
+            "ALTER TABLE inventory_tracking ADD COLUMN IF NOT EXISTS product_id TEXT DEFAULT ''",
+            "ALTER TABLE inventory_tracking ADD COLUMN IF NOT EXISTS product_name TEXT DEFAULT ''",
+            "ALTER TABLE inventory_tracking ADD COLUMN IF NOT EXISTS product_company TEXT DEFAULT ''",
+            "ALTER TABLE inventory_tracking ADD COLUMN IF NOT EXISTS qty_received INTEGER DEFAULT 0",
+            "ALTER TABLE inventory_tracking ADD COLUMN IF NOT EXISTS received_date TEXT DEFAULT ''",
+            "ALTER TABLE inventory_tracking ADD COLUMN IF NOT EXISTS single_product_price REAL DEFAULT 0",
+            "ALTER TABLE inventory_tracking ADD COLUMN IF NOT EXISTS overall_price REAL DEFAULT 0",
+            # products
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS company_id INTEGER DEFAULT 0",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS product_name TEXT DEFAULT ''",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS sold_by_product_name TEXT",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type TEXT DEFAULT 'Normal'",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS diameter TEXT",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS under_warranty INTEGER DEFAULT 0",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS warranty_period_days INTEGER DEFAULT 0",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS sale_price REAL DEFAULT 0",
+            # customer_advances
+            "ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS customer_phone TEXT DEFAULT ''",
+            "ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS customer_name TEXT DEFAULT ''",
+            "ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS company_name TEXT",
+            "ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS payment_to TEXT DEFAULT 'Us'",
+            "ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS advance_date TEXT DEFAULT ''",
+            "ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS amount_paid REAL DEFAULT 0",
+            "ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS payment_mode TEXT DEFAULT 'Cash'",
+            "ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS transaction_details TEXT",
+            "ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS remarks TEXT",
+            "ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS linked_company_advance_id INTEGER",
+            # company_advances
+            "ALTER TABLE company_advances ADD COLUMN IF NOT EXISTS company_id INTEGER DEFAULT 0",
+            "ALTER TABLE company_advances ADD COLUMN IF NOT EXISTS company_name TEXT DEFAULT ''",
+            "ALTER TABLE company_advances ADD COLUMN IF NOT EXISTS advance_date TEXT DEFAULT ''",
+            "ALTER TABLE company_advances ADD COLUMN IF NOT EXISTS amount_paid REAL DEFAULT 0",
+            "ALTER TABLE company_advances ADD COLUMN IF NOT EXISTS payment_mode TEXT DEFAULT 'Cash'",
+            "ALTER TABLE company_advances ADD COLUMN IF NOT EXISTS transaction_details TEXT",
+            "ALTER TABLE company_advances ADD COLUMN IF NOT EXISTS remarks TEXT",
+            "ALTER TABLE company_advances ADD COLUMN IF NOT EXISTS linked_customer_advance_id INTEGER",
+            # warranty_claims
+            "ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS product_id TEXT DEFAULT ''",
+            "ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS product_name TEXT DEFAULT ''",
+            "ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS company_name TEXT DEFAULT ''",
+            "ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS initial_mm REAL DEFAULT 0",
+            "ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS current_mm REAL DEFAULT 0",
+            "ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS sale_price REAL DEFAULT 0",
+            "ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS warranty_limit_mm REAL DEFAULT 0",
+            "ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS warranty_value REAL DEFAULT 0",
+            "ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS claim_date TEXT DEFAULT ''",
             "ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS customer_phone TEXT",
             "ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS customer_name TEXT",
         ]
@@ -1436,9 +1490,6 @@ def initialize_database():
                 cursor.execute(sql)
             except Exception:
                 pass
-        conn.close()
-        return
-    if is_postgres():
         conn.close()
         return
 
