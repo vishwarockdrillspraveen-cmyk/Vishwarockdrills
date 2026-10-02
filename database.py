@@ -23,8 +23,15 @@ def get_connection_string():
     url = None
     try:
         import streamlit as st
-        if hasattr(st, "secrets") and "DATABASE_URL" in st.secrets:
-            url = st.secrets["DATABASE_URL"]
+        if hasattr(st, "secrets"):
+            for k in ["DATABASE_URL", "database_url", "POSTGRES_URL", "postgres_url"]:
+                if k in st.secrets:
+                    url = st.secrets[k]
+                    break
+            if not url and "connections" in st.secrets and "postgresql" in st.secrets["connections"]:
+                url = st.secrets["connections"]["postgresql"].get("url")
+            if not url and "postgres" in st.secrets:
+                url = st.secrets["postgres"].get("url")
     except Exception:
         pass
     if not url:
@@ -69,13 +76,16 @@ class PostgresCompatibleCursor:
             if "INSERT OR IGNORE INTO companies (company_name)" in query:
                 query = "INSERT INTO companies (company_name) VALUES (%s) ON CONFLICT (company_name) DO NOTHING"
         if params is not None:
-            return self._cursor.execute(query, params)
-        return self._cursor.execute(query)
+            self._cursor.execute(query, params)
+        else:
+            self._cursor.execute(query)
+        return self
 
     def executemany(self, query, params_list):
         if self._is_pg and "?" in query:
             query = query.replace("?", "%s")
-        return self._cursor.executemany(query, params_list)
+        self._cursor.executemany(query, params_list)
+        return self
 
     def fetchone(self):
         return self._cursor.fetchone()
@@ -175,7 +185,10 @@ def get_connection():
     if HAS_SQLALCHEMY:
         try:
             engine = get_engine()
-            return PostgresCompatibleConnection(engine.raw_connection(), is_postgres())
+            raw_conn = engine.raw_connection()
+            if is_postgres():
+                raw_conn.autocommit = True
+            return PostgresCompatibleConnection(raw_conn, is_postgres())
         except Exception:
             pass
     if not DB_DIR.exists():
@@ -1367,6 +1380,9 @@ def delete_warranty_claim(claim_id):
 def initialize_database():
     conn = get_connection()
     cursor = conn.cursor()
+    if is_postgres():
+        conn.close()
+        return
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS customers (
