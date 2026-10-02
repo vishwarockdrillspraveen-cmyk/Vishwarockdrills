@@ -1,33 +1,18 @@
-import streamlit as st
 from datetime import datetime
+import streamlit as st
 
-from database import (
-    add_company_advance,
-    add_customer_advance,
-    add_customer_outstanding,
-    delete_company_advance,
-    delete_customer_advance,
-    delete_customer_outstanding,
-    get_companies,
-    get_company_advances,
-    get_customer_advances,
-    get_customer_outstanding,
-    get_customer_report,
-    get_customers,
-    update_company_advance,
-    update_customer_advance,
-    update_customer_outstanding,
-    validate_date_value,
-)
-from modules.ui import action_control, amount_input_with_words, flash_success
+import database
+from modules.ui import action_control, amount_in_words, amount_input_with_words, flash_success
 
 PAYMENT_MODES = ["Cash", "UPI", "Bank Transfer", "Cheque", "Other"]
 CUSTOMER_ADVANCE_PAYMENT_MODES = PAYMENT_MODES + ["Discount"]
 
 
-def _safe_date_field(label, value=None):
+def _safe_date_field(label, value=None, key=None):
     try:
-        return st.date_input(label, value=value) if value is not None else st.date_input(label)
+        if value is not None:
+            return st.date_input(label, value=value, key=key)
+        return st.date_input(label, key=key)
     except Exception:
         st.error(f"{label} must be a valid date.")
         return None
@@ -37,13 +22,26 @@ def _render_advance_table(rows, columns, filter_key):
     if not rows:
         st.info("No advance records available.")
         return
-    dataframe = [dict(zip(columns, row)) for row in rows]
+
+    dataframe = []
+    for row in rows:
+        row_dict = dict(zip(columns, row))
+        if "Amount Paid" in row_dict and "Amount in Words" not in row_dict:
+            new_dict = {}
+            for k, v in row_dict.items():
+                new_dict[k] = v
+                if k == "Amount Paid":
+                    new_dict["Amount in Words"] = amount_in_words(v)
+            row_dict = new_dict
+        dataframe.append(row_dict)
+
     search_term = st.text_input(
         "Filter records",
         placeholder="Search this list",
         icon=":material/search:",
         key=filter_key,
     ).strip().lower()
+
     visible_rows = [
         row for row in dataframe
         if not search_term or search_term in " ".join(str(value) for value in row.values()).lower()
@@ -57,38 +55,76 @@ def _render_company_advances():
     selected_action = action_control("company_advance_action_mode", ["Add", "Edit", "Delete"], "Add")
 
     with st.container():
-
-        companies = get_companies()
+        companies = database.get_companies()
         if not companies:
             st.info("No companies are available. Add a company first in the Partnership with section.")
             return
 
         if selected_action == "Add":
-            with st.form("add_company_advance_form", clear_on_submit=True):
-                company_name = st.selectbox("Company", [row[1] for row in companies])
-                advance_date = _safe_date_field("Advance Date")
-                amount_paid = st.number_input("Amount Paid", min_value=0.0, step=0.01, format="%.2f")
-                payment_mode = st.selectbox("Payment Mode", PAYMENT_MODES)
-                transaction_details = st.text_input("Transaction Details", placeholder="UPI ID, bank ref, cheque no., etc.")
-                remarks = st.text_input("Remarks")
+            company_name = st.selectbox("Company", [row[1] for row in companies], key="company_adv_add_company")
+            advance_date = _safe_date_field("Advance Date", key="company_adv_add_date")
+            amount_paid = amount_input_with_words("Amount Paid", key="company_adv_add_amount")
+            payment_mode = st.selectbox("Payment Mode", PAYMENT_MODES, key="company_adv_add_mode")
+            transaction_details = st.text_input("Transaction Details", placeholder="UPI ID, bank ref, cheque no., etc.", key="company_adv_add_txn")
+            remarks = st.text_input("Remarks", key="company_adv_add_remarks")
 
-                if payment_mode != "Cash":
-                    st.caption("Transaction Details is required for non-cash payment modes.")
+            if payment_mode != "Cash":
+                st.caption("Transaction Details is required for non-cash payment modes.")
 
-                submitted = st.form_submit_button("Save Company Advance")
-                if submitted:
-                    try:
-                        if payment_mode != "Cash" and transaction_details.strip() == "":
-                            st.error("Transaction Details is required for non-cash payment modes.")
-                        else:
-                            add_company_advance(company_name, advance_date, amount_paid, payment_mode, transaction_details, remarks)
-                            st.success("Company advance saved successfully")
+            # Live preview of amount in words
+            if amount_paid > 0:
+                st.info(f"**Preview Amount in Words:** {amount_in_words(amount_paid)}")
+
+            # Two-step confirmation (Enter will NOT save)
+            confirm_key = "show_confirm_company_advance_add"
+            if not st.session_state.get(confirm_key, False):
+                if st.button("Review & Save Company Advance", type="primary", key="review_company_adv_btn"):
+                    if payment_mode != "Cash" and transaction_details.strip() == "":
+                        st.error("Transaction Details is required for non-cash payment modes.")
+                    elif amount_paid <= 0:
+                        st.error("Amount Paid must be greater than zero.")
+                    else:
+                        st.session_state[confirm_key] = True
+                        st.rerun()
+            else:
+                st.warning("### Please confirm the details before saving:")
+                st.markdown(
+                    f"""
+                    - **Company:** {company_name}
+                    - **Date:** {advance_date}
+                    - **Amount Paid:** ₹{amount_paid:,.2f}
+                    - **Amount in Words:** **{amount_in_words(amount_paid)}**
+                    - **Payment Mode:** {payment_mode}
+                    - **Transaction Details:** {transaction_details or 'N/A'}
+                    - **Remarks:** {remarks or 'N/A'}
+                    """
+                )
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    if st.button("Yes, Confirm & Save", type="primary", key="confirm_save_company_adv_btn"):
+                        try:
+                            database.add_company_advance(
+                                company_name,
+                                advance_date,
+                                amount_paid,
+                                payment_mode,
+                                transaction_details,
+                                remarks,
+                            )
+                            st.session_state[confirm_key] = False
+                            for k in ["company_adv_add_amount", "company_adv_add_txn", "company_adv_add_remarks"]:
+                                st.session_state.pop(k, None)
+                            st.success("Company advance saved successfully!")
                             st.rerun()
-                    except ValueError as exc:
-                        st.error(str(exc))
+                        except ValueError as exc:
+                            st.error(str(exc))
+                with col2:
+                    if st.button("Cancel / Modify", key="cancel_save_company_adv_btn"):
+                        st.session_state[confirm_key] = False
+                        st.rerun()
 
         elif selected_action == "Edit":
-            rows = get_company_advances()
+            rows = database.get_company_advances()
             if not rows:
                 st.info("No company advances found.")
                 return
@@ -111,27 +147,74 @@ def _render_company_advances():
             selected_row = filtered_rows[options.index(selected_label)]
             selected_id = selected_row[0]
 
-            with st.form("edit_company_advance_form"):
-                company_name = st.selectbox("Company", [row[1] for row in companies], index=[row[1] for row in companies].index(selected_row[2]))
-                advance_date = _safe_date_field("Advance Date", value=datetime.strptime(selected_row[3], "%Y-%m-%d").date())
-                amount_paid = st.number_input("Amount Paid", min_value=0.0, step=0.01, format="%.2f", value=float(selected_row[4] or 0))
-                payment_mode = st.selectbox("Payment Mode", PAYMENT_MODES, index=PAYMENT_MODES.index(selected_row[5]) if selected_row[5] in PAYMENT_MODES else 0)
-                transaction_details = st.text_input("Transaction Details", value=str(selected_row[6] or ""))
-                remarks = st.text_input("Remarks", value=str(selected_row[7] or ""))
-                submitted = st.form_submit_button("Update Company Advance")
-                if submitted:
-                    try:
-                        if payment_mode != "Cash" and transaction_details.strip() == "":
-                            st.error("Transaction Details is required for non-cash payment modes.")
-                        else:
-                            update_company_advance(selected_id, company_name, advance_date, amount_paid, payment_mode, transaction_details, remarks, selected_row[8])
+            company_name = st.selectbox(
+                "Company",
+                [row[1] for row in companies],
+                index=[row[1] for row in companies].index(selected_row[2]),
+                key=f"company_adv_edit_company_{selected_id}",
+            )
+            advance_date = _safe_date_field(
+                "Advance Date",
+                value=datetime.strptime(selected_row[3], "%Y-%m-%d").date(),
+                key=f"company_adv_edit_date_{selected_id}",
+            )
+            amount_paid = amount_input_with_words(
+                "Amount Paid",
+                key=f"company_adv_edit_amount_{selected_id}",
+                value=float(selected_row[4] or 0),
+            )
+            payment_mode = st.selectbox(
+                "Payment Mode",
+                PAYMENT_MODES,
+                index=PAYMENT_MODES.index(selected_row[5]) if selected_row[5] in PAYMENT_MODES else 0,
+                key=f"company_adv_edit_mode_{selected_id}",
+            )
+            transaction_details = st.text_input("Transaction Details", value=str(selected_row[6] or ""), key=f"company_adv_edit_txn_{selected_id}")
+            remarks = st.text_input("Remarks", value=str(selected_row[7] or ""), key=f"company_adv_edit_remarks_{selected_id}")
+
+            if amount_paid > 0:
+                st.info(f"**Preview Amount in Words:** {amount_in_words(amount_paid)}")
+
+            confirm_edit_key = f"show_confirm_company_adv_edit_{selected_id}"
+            if not st.session_state.get(confirm_edit_key, False):
+                if st.button("Review & Update Company Advance", type="primary", key=f"review_update_company_adv_btn_{selected_id}"):
+                    if payment_mode != "Cash" and transaction_details.strip() == "":
+                        st.error("Transaction Details is required for non-cash payment modes.")
+                    elif amount_paid <= 0:
+                        st.error("Amount Paid must be greater than zero.")
+                    else:
+                        st.session_state[confirm_edit_key] = True
+                        st.rerun()
+            else:
+                st.warning("### Please confirm the updated details before saving:")
+                st.markdown(
+                    f"""
+                    - **Company:** {company_name}
+                    - **Date:** {advance_date}
+                    - **Amount Paid:** ₹{amount_paid:,.2f}
+                    - **Amount in Words:** **{amount_in_words(amount_paid)}**
+                    - **Payment Mode:** {payment_mode}
+                    - **Transaction Details:** {transaction_details or 'N/A'}
+                    - **Remarks:** {remarks or 'N/A'}
+                    """
+                )
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    if st.button("Yes, Confirm & Update", type="primary", key=f"confirm_update_company_adv_btn_{selected_id}"):
+                        try:
+                            database.update_company_advance(selected_id, company_name, advance_date, amount_paid, payment_mode, transaction_details, remarks, selected_row[8])
+                            st.session_state[confirm_edit_key] = False
                             st.success("Company advance updated successfully")
                             st.rerun()
-                    except ValueError as exc:
-                        st.error(str(exc))
+                        except ValueError as exc:
+                            st.error(str(exc))
+                with col2:
+                    if st.button("Cancel / Modify", key=f"cancel_update_company_adv_btn_{selected_id}"):
+                        st.session_state[confirm_edit_key] = False
+                        st.rerun()
 
         elif selected_action == "Delete":
-            rows = get_company_advances()
+            rows = database.get_company_advances()
             if not rows:
                 st.info("No company advances found.")
                 return
@@ -154,15 +237,14 @@ def _render_company_advances():
             selected_row = filtered_rows[options.index(selected_label)]
 
             st.warning(f"Are you sure you want to delete the company advance for {selected_row[2]} on {selected_row[3]}?")
-            with st.form("delete_company_advance_form"):
-                if st.form_submit_button("Delete This Advance"):
-                    delete_company_advance(selected_row[0])
-                    st.success("Company advance deleted")
-                    st.rerun()
+            if st.button("Delete This Advance", type="primary", key=f"delete_company_adv_{selected_row[0]}"):
+                database.delete_company_advance(selected_row[0])
+                st.success("Company advance deleted")
+                st.rerun()
 
         st.markdown("### Company Advances List")
         _render_advance_table(
-            get_company_advances(),
+            database.get_company_advances(),
             ["Advance ID", "Company ID", "Company Name", "Advance Date", "Amount Paid", "Payment Mode", "Transaction Details", "Remarks", "Linked Customer Advance ID"],
             "company_advances_filter",
         )
@@ -173,51 +255,82 @@ def _render_customer_advances():
     selected_action = action_control("customer_advance_action_mode", ["Add", "Edit", "Delete"], "Add")
 
     with st.container():
-        customers = get_customers()
+        customers = database.get_customers()
 
         if selected_action == "Add":
             if not customers:
                 st.info("No customers are available. Add a customer before recording an advance.")
                 return
 
-            with st.form("add_customer_advance_form", clear_on_submit=True):
-                customer = st.selectbox("Customer", [f"{row[1]} ({row[0]})" for row in customers])
-                customer_phone = next((row[0] for row in customers if f"{row[1]} ({row[0]})" == customer), customers[0][0])
-                customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
+            customer = st.selectbox("Customer", [f"{row[1]} ({row[0]})" for row in customers], key="cust_adv_add_customer")
+            customer_phone = next((row[0] for row in customers if f"{row[1]} ({row[0]})" == customer), customers[0][0])
+            customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
 
-                payment_mode = st.selectbox("Payment Mode", CUSTOMER_ADVANCE_PAYMENT_MODES)
-                payment_to = "Us"
-                company_name = ""
-                if payment_mode == "Discount":
-                    st.caption("Discount is recorded as a customer credit; no company advance is created.")
-                else:
-                    payment_to = st.selectbox("Payment To", ["Us", "Company"])
-                    if payment_to == "Company":
-                        companies = get_companies()
-                        if not companies:
-                            st.info("No companies available. Add a company in Partnership with before creating a customer advance to company.")
-                            return
-                        company_name = st.selectbox("Company", [row[1] for row in companies])
+            payment_mode = st.selectbox("Payment Mode", CUSTOMER_ADVANCE_PAYMENT_MODES, key="cust_adv_add_mode")
+            payment_to = "Us"
+            company_name = ""
+            if payment_mode == "Discount":
+                st.caption("Discount is recorded as a customer credit; no company advance is created.")
+            else:
+                payment_to = st.selectbox("Payment To", ["Us", "Company"], key="cust_adv_add_pay_to")
+                if payment_to == "Company":
+                    companies = database.get_companies()
+                    if not companies:
+                        st.info("No companies available. Add a company in Partnership with before creating a customer advance to company.")
+                        return
+                    company_name = st.selectbox("Company", [row[1] for row in companies], key="cust_adv_add_company")
 
-                advance_date = _safe_date_field("Advance Date")
-                amount_paid = st.number_input("Amount Paid", min_value=0.0, step=0.01, format="%.2f")
-                transaction_details = st.text_input("Transaction Details", placeholder="UPI ID, bank ref, cheque no., etc.")
-                remarks = st.text_input("Remarks")
+            advance_date = _safe_date_field("Advance Date", key="cust_adv_add_date")
+            amount_paid = amount_input_with_words("Amount Paid", key="cust_adv_add_amount")
+            transaction_details = st.text_input("Transaction Details", placeholder="UPI ID, bank ref, cheque no., etc.", key="cust_adv_add_txn")
+            remarks = st.text_input("Remarks", key="cust_adv_add_remarks")
 
-                submitted = st.form_submit_button("Save Customer Advance")
-                if submitted:
-                    try:
-                        if payment_mode not in ("Cash", "Discount") and transaction_details.strip() == "":
-                            st.error("Transaction Details is required for non-cash payment modes.")
-                        else:
-                            add_customer_advance(customer_phone, customer_name, company_name, payment_to, advance_date, amount_paid, payment_mode, transaction_details, remarks)
+            if amount_paid > 0:
+                st.info(f"**Preview Amount in Words:** {amount_in_words(amount_paid)}")
+
+            confirm_cust_key = "show_confirm_customer_adv_add"
+            if not st.session_state.get(confirm_cust_key, False):
+                if st.button("Review & Save Customer Advance", type="primary", key="review_cust_adv_btn"):
+                    if payment_mode not in ("Cash", "Discount") and transaction_details.strip() == "":
+                        st.error("Transaction Details is required for non-cash payment modes.")
+                    elif amount_paid <= 0:
+                        st.error("Amount Paid must be greater than zero.")
+                    else:
+                        st.session_state[confirm_cust_key] = True
+                        st.rerun()
+            else:
+                st.warning("### Please confirm the details before saving:")
+                st.markdown(
+                    f"""
+                    - **Customer:** {customer_name} ({customer_phone})
+                    - **Paid To:** {payment_to} {f'({company_name})' if payment_to == 'Company' else ''}
+                    - **Date:** {advance_date}
+                    - **Amount Paid:** ₹{amount_paid:,.2f}
+                    - **Amount in Words:** **{amount_in_words(amount_paid)}**
+                    - **Payment Mode:** {payment_mode}
+                    - **Transaction Details:** {transaction_details or 'N/A'}
+                    - **Remarks:** {remarks or 'N/A'}
+                    """
+                )
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    if st.button("Yes, Confirm & Save", type="primary", key="confirm_save_cust_adv_btn"):
+                        try:
+                            database.add_customer_advance(customer_phone, customer_name, company_name, payment_to, advance_date, amount_paid, payment_mode, transaction_details, remarks)
+                            st.session_state[confirm_cust_key] = False
+                            for k in ["cust_adv_add_amount", "cust_adv_add_txn", "cust_adv_add_remarks"]:
+                                st.session_state.pop(k, None)
                             st.success("Customer advance saved successfully")
                             st.rerun()
-                    except ValueError as exc:
-                        st.error(str(exc))
+                        except ValueError as exc:
+                            st.error(str(exc))
+                with col2:
+                    if st.button("Cancel / Modify", key="cancel_save_cust_adv_btn"):
+                        st.session_state[confirm_cust_key] = False
+                        st.rerun()
 
         elif selected_action == "Edit":
-            rows = get_customer_advances()
+            rows = database.get_customer_advances()
             if not rows:
                 st.info("No customer advances found.")
                 return
@@ -240,49 +353,80 @@ def _render_customer_advances():
             selected_row = filtered_rows[options.index(selected_label)]
             selected_id = selected_row[0]
 
-            with st.form("edit_customer_advance_form"):
-                row_customer = next((row for row in customers if row[0] == selected_row[1]), None)
-                customer_name = row_customer[1] if row_customer else selected_row[2]
-                customer_value = f"{customer_name} ({selected_row[1]})"
-                customer_options = [f"{row[1]} ({row[0]})" for row in customers]
-                customer_index = customer_options.index(customer_value) if customer_value in customer_options else 0
-                customer = st.selectbox("Customer", customer_options, index=customer_index)
-                customer_phone = next((row[0] for row in customers if f"{row[1]} ({row[0]})" == customer), customers[0][0])
-                customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
+            row_customer = next((row for row in customers if row[0] == selected_row[1]), None)
+            customer_name = row_customer[1] if row_customer else selected_row[2]
+            customer_value = f"{customer_name} ({selected_row[1]})"
+            customer_options = [f"{row[1]} ({row[0]})" for row in customers]
+            customer_index = customer_options.index(customer_value) if customer_value in customer_options else 0
+            customer = st.selectbox("Customer", customer_options, index=customer_index, key=f"cust_adv_edit_customer_{selected_id}")
+            customer_phone = next((row[0] for row in customers if f"{row[1]} ({row[0]})" == customer), customers[0][0])
+            customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
 
-                payment_mode = st.selectbox(
-                    "Payment Mode",
-                    CUSTOMER_ADVANCE_PAYMENT_MODES,
-                    index=CUSTOMER_ADVANCE_PAYMENT_MODES.index(selected_row[7]) if selected_row[7] in CUSTOMER_ADVANCE_PAYMENT_MODES else 0,
+            payment_mode = st.selectbox(
+                "Payment Mode",
+                CUSTOMER_ADVANCE_PAYMENT_MODES,
+                index=CUSTOMER_ADVANCE_PAYMENT_MODES.index(selected_row[7]) if selected_row[7] in CUSTOMER_ADVANCE_PAYMENT_MODES else 0,
+                key=f"cust_adv_edit_mode_{selected_id}",
+            )
+            payment_to = "Us"
+            company_name = ""
+            if payment_mode == "Discount":
+                st.caption("Discount is recorded as a customer credit; no company advance is created.")
+            else:
+                payment_to = st.selectbox("Payment To", ["Us", "Company"], index=["Us", "Company"].index(selected_row[4]), key=f"cust_adv_edit_pay_to_{selected_id}")
+                if payment_to == "Company":
+                    company_options = [row[1] for row in database.get_companies()]
+                    company_name = st.selectbox("Company", company_options, index=company_options.index(selected_row[3]) if selected_row[3] in company_options else 0, key=f"cust_adv_edit_company_{selected_id}")
+
+            advance_date = _safe_date_field("Advance Date", value=datetime.strptime(selected_row[5], "%Y-%m-%d").date(), key=f"cust_adv_edit_date_{selected_id}")
+            amount_paid = amount_input_with_words("Amount Paid", key=f"cust_adv_edit_amount_{selected_id}", value=float(selected_row[6] or 0))
+            transaction_details = st.text_input("Transaction Details", value=str(selected_row[8] or ""), key=f"cust_adv_edit_txn_{selected_id}")
+            remarks = st.text_input("Remarks", value=str(selected_row[9] or ""), key=f"cust_adv_edit_remarks_{selected_id}")
+
+            if amount_paid > 0:
+                st.info(f"**Preview Amount in Words:** {amount_in_words(amount_paid)}")
+
+            confirm_cust_edit_key = f"show_confirm_customer_adv_edit_{selected_id}"
+            if not st.session_state.get(confirm_cust_edit_key, False):
+                if st.button("Review & Update Customer Advance", type="primary", key=f"review_update_cust_adv_btn_{selected_id}"):
+                    if payment_mode not in ("Cash", "Discount") and transaction_details.strip() == "":
+                        st.error("Transaction Details is required for non-cash payment modes.")
+                    elif amount_paid <= 0:
+                        st.error("Amount Paid must be greater than zero.")
+                    else:
+                        st.session_state[confirm_cust_edit_key] = True
+                        st.rerun()
+            else:
+                st.warning("### Please confirm the updated details before saving:")
+                st.markdown(
+                    f"""
+                    - **Customer:** {customer_name} ({customer_phone})
+                    - **Paid To:** {payment_to} {f'({company_name})' if payment_to == 'Company' else ''}
+                    - **Date:** {advance_date}
+                    - **Amount Paid:** ₹{amount_paid:,.2f}
+                    - **Amount in Words:** **{amount_in_words(amount_paid)}**
+                    - **Payment Mode:** {payment_mode}
+                    - **Transaction Details:** {transaction_details or 'N/A'}
+                    - **Remarks:** {remarks or 'N/A'}
+                    """
                 )
-                payment_to = "Us"
-                company_name = ""
-                if payment_mode == "Discount":
-                    st.caption("Discount is recorded as a customer credit; no company advance is created.")
-                else:
-                    payment_to = st.selectbox("Payment To", ["Us", "Company"], index=["Us", "Company"].index(selected_row[4]))
-                    if payment_to == "Company":
-                        company_options = [row[1] for row in get_companies()]
-                        company_name = st.selectbox("Company", company_options, index=company_options.index(selected_row[3]) if selected_row[3] in company_options else 0)
-
-                advance_date = _safe_date_field("Advance Date", value=datetime.strptime(selected_row[5], "%Y-%m-%d").date())
-                amount_paid = st.number_input("Amount Paid", min_value=0.0, step=0.01, format="%.2f", value=float(selected_row[6] or 0))
-                transaction_details = st.text_input("Transaction Details", value=str(selected_row[8] or ""))
-                remarks = st.text_input("Remarks", value=str(selected_row[9] or ""))
-                submitted = st.form_submit_button("Update Customer Advance")
-                if submitted:
-                    try:
-                        if payment_mode not in ("Cash", "Discount") and transaction_details.strip() == "":
-                            st.error("Transaction Details is required for non-cash payment modes.")
-                        else:
-                            update_customer_advance(selected_id, customer_phone, customer_name, company_name, payment_to, advance_date, amount_paid, payment_mode, transaction_details, remarks)
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    if st.button("Yes, Confirm & Update", type="primary", key=f"confirm_update_cust_adv_btn_{selected_id}"):
+                        try:
+                            database.update_customer_advance(selected_id, customer_phone, customer_name, company_name, payment_to, advance_date, amount_paid, payment_mode, transaction_details, remarks)
+                            st.session_state[confirm_cust_edit_key] = False
                             st.success("Customer advance updated successfully")
                             st.rerun()
-                    except ValueError as exc:
-                        st.error(str(exc))
+                        except ValueError as exc:
+                            st.error(str(exc))
+                with col2:
+                    if st.button("Cancel / Modify", key=f"cancel_update_cust_adv_btn_{selected_id}"):
+                        st.session_state[confirm_cust_edit_key] = False
+                        st.rerun()
 
         elif selected_action == "Delete":
-            rows = get_customer_advances()
+            rows = database.get_customer_advances()
             if not rows:
                 st.info("No customer advances found.")
                 return
@@ -305,15 +449,14 @@ def _render_customer_advances():
             selected_row = filtered_rows[options.index(selected_label)]
 
             st.warning(f"Are you sure you want to delete the customer advance for {selected_row[2]} on {selected_row[5]}?")
-            with st.form("delete_customer_advance_form"):
-                if st.form_submit_button("Delete This Advance"):
-                    delete_customer_advance(selected_row[0])
-                    st.success("Customer advance deleted")
-                    st.rerun()
+            if st.button("Delete This Advance", type="primary", key=f"delete_cust_adv_{selected_row[0]}"):
+                database.delete_customer_advance(selected_row[0])
+                st.success("Customer advance deleted")
+                st.rerun()
 
         st.markdown("### Customer Advance List")
         _render_advance_table(
-            get_customer_advances(),
+            database.get_customer_advances(),
             ["Advance ID", "Customer Phone", "Customer Name", "Company Name", "Paid To", "Advance Date", "Amount Paid", "Payment Mode", "Transaction Details", "Remarks", "Linked Company Advance ID"],
             "customer_advances_filter",
         )
@@ -324,32 +467,61 @@ def _render_customer_outstanding():
     selected_action = action_control("customer_outstanding_action_mode", ["Add", "Edit", "Delete"], "Add")
 
     with st.container():
-        customers = get_customers()
+        customers = database.get_customers()
 
         if selected_action == "Add":
             if not customers:
                 st.info("No customers are available. Add a customer before entering outstanding values.")
                 return
 
-            with st.form("add_customer_outstanding_form", clear_on_submit=True):
-                customer = st.selectbox("Customer", [f"{row[1]} ({row[0]})" for row in customers])
-                customer_phone = next((row[0] for row in customers if f"{row[1]} ({row[0]})" == customer), customers[0][0])
-                customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
-                month_start = st.date_input("Month Start")
-                outstanding_amount = st.number_input("Outstanding Amount", min_value=0.0, step=0.01, format="%.2f")
-                remarks = st.text_input("Remarks")
+            customer = st.selectbox("Customer", [f"{row[1]} ({row[0]})" for row in customers], key="cust_out_add_customer")
+            customer_phone = next((row[0] for row in customers if f"{row[1]} ({row[0]})" == customer), customers[0][0])
+            customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
+            month_start = st.date_input("Month Start", key="cust_out_add_month")
+            outstanding_amount = amount_input_with_words("Outstanding Amount", key="cust_out_add_amount")
+            remarks = st.text_input("Remarks", key="cust_out_add_remarks")
 
-                submitted = st.form_submit_button("Save Outstanding")
-                if submitted:
-                    try:
-                        add_customer_outstanding(customer_phone, customer_name, month_start, outstanding_amount, remarks)
-                        st.success("Customer outstanding saved successfully")
+            if outstanding_amount > 0:
+                st.info(f"**Preview Amount in Words:** {amount_in_words(outstanding_amount)}")
+
+            confirm_out_key = "show_confirm_customer_out_add"
+            if not st.session_state.get(confirm_out_key, False):
+                if st.button("Review & Save Outstanding", type="primary", key="review_cust_out_btn"):
+                    if outstanding_amount <= 0:
+                        st.error("Outstanding Amount must be greater than zero.")
+                    else:
+                        st.session_state[confirm_out_key] = True
                         st.rerun()
-                    except ValueError as exc:
-                        st.error(str(exc))
+            else:
+                st.warning("### Please confirm the outstanding details before saving:")
+                st.markdown(
+                    f"""
+                    - **Customer:** {customer_name} ({customer_phone})
+                    - **Month Start:** {month_start}
+                    - **Outstanding Amount:** ₹{outstanding_amount:,.2f}
+                    - **Amount in Words:** **{amount_in_words(outstanding_amount)}**
+                    - **Remarks:** {remarks or 'N/A'}
+                    """
+                )
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    if st.button("Yes, Confirm & Save", type="primary", key="confirm_save_cust_out_btn"):
+                        try:
+                            database.add_customer_outstanding(customer_phone, customer_name, month_start, outstanding_amount, remarks)
+                            st.session_state[confirm_out_key] = False
+                            for k in ["cust_out_add_amount", "cust_out_add_remarks"]:
+                                st.session_state.pop(k, None)
+                            st.success("Customer outstanding saved successfully")
+                            st.rerun()
+                        except ValueError as exc:
+                            st.error(str(exc))
+                with col2:
+                    if st.button("Cancel / Modify", key="cancel_save_cust_out_btn"):
+                        st.session_state[confirm_out_key] = False
+                        st.rerun()
 
         elif selected_action == "Edit":
-            rows = get_customer_outstanding()
+            rows = database.get_customer_outstanding()
             if not rows:
                 st.info("No customer outstanding entries found.")
                 return
@@ -374,25 +546,57 @@ def _render_customer_outstanding():
             selected_row = filtered_rows[options.index(selected_label)]
             selected_id = selected_row[0]
 
-            with st.form("edit_customer_outstanding_form"):
-                customer = st.selectbox("Customer", [f"{row[1]} ({row[0]})" for row in customers], index=[f"{row[1]} ({row[0]})" for row in customers].index(f"{selected_row[2]} ({selected_row[1]})") if f"{selected_row[2]} ({selected_row[1]})" in [f"{row[1]} ({row[0]})" for row in customers] else 0)
-                customer_phone = next((row[0] for row in customers if f"{row[1]} ({row[0]})" == customer), customers[0][0])
-                customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
-                month_start = st.date_input("Month Start", value=datetime.strptime(selected_row[3], "%Y-%m-%d").date())
-                outstanding_amount = st.number_input("Outstanding Amount", min_value=0.0, step=0.01, format="%.2f", value=float(selected_row[4] or 0))
-                remarks = st.text_input("Remarks", value=str(selected_row[5] or ""))
+            customer = st.selectbox(
+                "Customer",
+                [f"{row[1]} ({row[0]})" for row in customers],
+                index=[f"{row[1]} ({row[0]})" for row in customers].index(f"{selected_row[2]} ({selected_row[1]})") if f"{selected_row[2]} ({selected_row[1]})" in [f"{row[1]} ({row[0]})" for row in customers] else 0,
+                key=f"cust_out_edit_customer_{selected_id}",
+            )
+            customer_phone = next((row[0] for row in customers if f"{row[1]} ({row[0]})" == customer), customers[0][0])
+            customer_name = next((row[1] for row in customers if row[0] == customer_phone), "")
+            month_start = st.date_input("Month Start", value=datetime.strptime(selected_row[3], "%Y-%m-%d").date(), key=f"cust_out_edit_month_{selected_id}")
+            outstanding_amount = amount_input_with_words("Outstanding Amount", key=f"cust_out_edit_amount_{selected_id}", value=float(selected_row[4] or 0))
+            remarks = st.text_input("Remarks", value=str(selected_row[5] or ""), key=f"cust_out_edit_remarks_{selected_id}")
 
-                submitted = st.form_submit_button("Update Outstanding")
-                if submitted:
-                    try:
-                        update_customer_outstanding(selected_id, customer_phone, customer_name, month_start, outstanding_amount, remarks)
-                        st.success("Customer outstanding updated successfully")
+            if outstanding_amount > 0:
+                st.info(f"**Preview Amount in Words:** {amount_in_words(outstanding_amount)}")
+
+            confirm_out_edit_key = f"show_confirm_customer_out_edit_{selected_id}"
+            if not st.session_state.get(confirm_out_edit_key, False):
+                if st.button("Review & Update Outstanding", type="primary", key=f"review_update_cust_out_btn_{selected_id}"):
+                    if outstanding_amount <= 0:
+                        st.error("Outstanding Amount must be greater than zero.")
+                    else:
+                        st.session_state[confirm_out_edit_key] = True
                         st.rerun()
-                    except ValueError as exc:
-                        st.error(str(exc))
+            else:
+                st.warning("### Please confirm the updated details before saving:")
+                st.markdown(
+                    f"""
+                    - **Customer:** {customer_name} ({customer_phone})
+                    - **Month Start:** {month_start}
+                    - **Outstanding Amount:** ₹{outstanding_amount:,.2f}
+                    - **Amount in Words:** **{amount_in_words(outstanding_amount)}**
+                    - **Remarks:** {remarks or 'N/A'}
+                    """
+                )
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    if st.button("Yes, Confirm & Update", type="primary", key=f"confirm_update_cust_out_btn_{selected_id}"):
+                        try:
+                            database.update_customer_outstanding(selected_id, customer_phone, customer_name, month_start, outstanding_amount, remarks)
+                            st.session_state[confirm_out_edit_key] = False
+                            st.success("Customer outstanding updated successfully")
+                            st.rerun()
+                        except ValueError as exc:
+                            st.error(str(exc))
+                with col2:
+                    if st.button("Cancel / Modify", key=f"cancel_update_cust_out_btn_{selected_id}"):
+                        st.session_state[confirm_out_edit_key] = False
+                        st.rerun()
 
         elif selected_action == "Delete":
-            rows = get_customer_outstanding()
+            rows = database.get_customer_outstanding()
             if not rows:
                 st.info("No customer outstanding entries found.")
                 return
@@ -417,14 +621,13 @@ def _render_customer_outstanding():
             selected_row = filtered_rows[options.index(selected_label)]
 
             st.warning(f"Are you sure you want to delete the outstanding entry for {selected_row[2]} for {selected_row[3]}?")
-            with st.form("delete_customer_outstanding_form"):
-                if st.form_submit_button("Delete This Outstanding"):
-                    delete_customer_outstanding(selected_row[0])
-                    st.success("Outstanding entry deleted")
-                    st.rerun()
+            if st.button("Delete This Outstanding", type="primary", key=f"delete_cust_out_{selected_row[0]}"):
+                database.delete_customer_outstanding(selected_row[0])
+                st.success("Outstanding entry deleted")
+                st.rerun()
 
         st.markdown("### Customer Outstanding List")
-        rows = get_customer_outstanding()
+        rows = database.get_customer_outstanding()
         if not rows:
             st.info("No customer outstanding entries available.")
             return
@@ -437,6 +640,7 @@ def _render_customer_outstanding():
                     "Customer Name": row[2],
                     "Month Start": row[3],
                     "Outstanding Amount": float(row[4] or 0),
+                    "Amount in Words": amount_in_words(row[4]),
                     "Remarks": row[5],
                 }
                 for row in rows
@@ -448,7 +652,7 @@ def _render_customer_outstanding():
 
 def _render_customer_report():
     st.subheader("Customer Report")
-    rows = get_customer_report()
+    rows = database.get_customer_report()
     if not rows:
         st.info("No customer data available to report.")
         return
