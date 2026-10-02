@@ -1,3 +1,4 @@
+import urllib.parse
 import os
 import sqlite3
 from datetime import datetime, timedelta
@@ -51,9 +52,26 @@ def get_connection_string():
         return f"sqlite:///{DB_PATH}"
 
     if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
-    if url.startswith("postgresql://") and not url.startswith("postgresql+"):
+        url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif url.startswith("postgresql://") and not url.startswith("postgresql+"):
         url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+    # Automatically route direct Supabase connections (IPv6 only) to Supabase IPv4 Pooler
+    if ".supabase.co" in url and "db." in url:
+        try:
+            p = urllib.parse.urlsplit(url)
+            host_parts = p.hostname.split(".") if p.hostname else []
+            if len(host_parts) >= 3 and host_parts[0] == "db":
+                proj_ref = host_parts[1]
+                user = p.username or "postgres"
+                if not user.endswith(f".{proj_ref}"):
+                    user = f"{user}.{proj_ref}"
+                new_host = "aws-0-ap-south-1.pooler.supabase.com"
+                netloc = f"{user}:{p.password}@{new_host}:5432"
+                url = urllib.parse.urlunsplit(p._replace(netloc=netloc))
+        except Exception:
+            pass
+
     return url
 
 def get_engine():
@@ -66,10 +84,11 @@ def get_engine():
             _engine = create_engine(
                 db_url,
                 poolclass=QueuePool,
-                pool_size=10,
-                max_overflow=20,
+                pool_size=5,
+                max_overflow=10,
                 pool_pre_ping=True,
                 pool_recycle=300,
+                connect_args={"sslmode": "require"},
             )
     return _engine
 

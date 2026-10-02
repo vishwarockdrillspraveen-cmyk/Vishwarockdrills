@@ -4,7 +4,10 @@ from database import initialize_database
 from modules.customers import customer_page
 from modules.ui import show_flash_message
 
-initialize_database()
+try:
+    initialize_database()
+except Exception:
+    pass
 
 st.set_page_config(
     page_title="Vishwa Rock Drills",
