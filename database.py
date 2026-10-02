@@ -32,12 +32,24 @@ def get_connection_string():
                 url = st.secrets["connections"]["postgresql"].get("url")
             if not url and "postgres" in st.secrets:
                 url = st.secrets["postgres"].get("url")
+            if not url:
+                for k, v in st.secrets.items():
+                    if isinstance(v, str) and ("postgres://" in v or "postgresql://" in v):
+                        url = v
+                        break
+                    elif isinstance(v, dict):
+                        for sub_k, sub_v in v.items():
+                            if isinstance(sub_v, str) and ("postgres://" in sub_v or "postgresql://" in sub_v):
+                                url = sub_v
+                                break
     except Exception:
         pass
+
     if not url:
         url = os.environ.get("DATABASE_URL")
     if not url:
         return f"sqlite:///{DB_PATH}"
+
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
     if url.startswith("postgresql://") and not url.startswith("postgresql+"):
@@ -182,19 +194,25 @@ def delete_customer(phone):
 
 
 def get_connection():
-    if HAS_SQLALCHEMY:
+    db_url = get_connection_string()
+    if not db_url.startswith("sqlite"):
+        if not HAS_SQLALCHEMY:
+            raise RuntimeError(
+                "SQLAlchemy or psycopg2 is not installed on this server. "
+                "Ensure SQLAlchemy>=2.0.0 and psycopg2-binary>=2.9.9 are in requirements.txt."
+            )
         try:
             engine = get_engine()
             raw_conn = engine.raw_connection()
             if is_postgres():
                 raw_conn.autocommit = True
             return PostgresCompatibleConnection(raw_conn, is_postgres())
-        except Exception:
-            pass
+        except Exception as e:
+            raise RuntimeError(f"Failed to connect to Supabase PostgreSQL: {e}") from e
+
     if not DB_DIR.exists():
         DB_DIR.mkdir(parents=True, exist_ok=True)
     return sqlite3.connect(str(DB_PATH))
-
 
 def add_customer(customer_name, phone, email):
     conn = get_connection()
@@ -1380,6 +1398,9 @@ def delete_warranty_claim(claim_id):
 def initialize_database():
     conn = get_connection()
     cursor = conn.cursor()
+    if is_postgres():
+        conn.close()
+        return
     if is_postgres():
         conn.close()
         return

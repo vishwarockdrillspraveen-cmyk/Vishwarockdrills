@@ -15,6 +15,13 @@ st.set_page_config(
 st.title("Vishwa Rock Drills", icon=":material/construction:")
 show_flash_message()
 
+from database import get_connection_string
+_active_db = get_connection_string()
+if _active_db.startswith("sqlite"):
+    st.sidebar.warning("⚠️ Using Local SQLite (No Supabase URL found in Secrets)")
+else:
+    st.sidebar.success("☁️ Supabase PostgreSQL Connected")
+
 st.sidebar.markdown("### Workspace")
 main_menu_items = [
     ("Dashboard", "dashboard"),
