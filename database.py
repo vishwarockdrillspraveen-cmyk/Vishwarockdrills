@@ -3,12 +3,132 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
+try:
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import QueuePool
+    HAS_SQLALCHEMY = True
+except ImportError:
+    HAS_SQLALCHEMY = False
+
 BASE_DIR = Path(__file__).resolve().parent
 DB_DIR = BASE_DIR / "database"
 DB_PATH = DB_DIR / "warranty.db"
 
 if not DB_DIR.exists():
     DB_DIR.mkdir(parents=True, exist_ok=True)
+
+_engine = None
+
+def get_connection_string():
+    url = None
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets") and "DATABASE_URL" in st.secrets:
+            url = st.secrets["DATABASE_URL"]
+    except Exception:
+        pass
+    if not url:
+        url = os.environ.get("DATABASE_URL")
+    if not url:
+        return f"sqlite:///{DB_PATH}"
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    if url.startswith("postgresql://") and not url.startswith("postgresql+"):
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return url
+
+def get_engine():
+    global _engine
+    if _engine is None:
+        db_url = get_connection_string()
+        if db_url.startswith("sqlite"):
+            _engine = create_engine(db_url, connect_args={"check_same_thread": False})
+        else:
+            _engine = create_engine(
+                db_url,
+                poolclass=QueuePool,
+                pool_size=10,
+                max_overflow=20,
+                pool_pre_ping=True,
+                pool_recycle=300,
+            )
+    return _engine
+
+def is_postgres():
+    return "postgresql" in get_connection_string()
+
+class PostgresCompatibleCursor:
+    def __init__(self, raw_cursor, is_pg=True):
+        self._cursor = raw_cursor
+        self._is_pg = is_pg
+
+    def execute(self, query, params=None):
+        if self._is_pg:
+            if "?" in query:
+                query = query.replace("?", "%s")
+            if "INSERT OR IGNORE INTO companies (company_name)" in query:
+                query = "INSERT INTO companies (company_name) VALUES (%s) ON CONFLICT (company_name) DO NOTHING"
+        if params is not None:
+            return self._cursor.execute(query, params)
+        return self._cursor.execute(query)
+
+    def executemany(self, query, params_list):
+        if self._is_pg and "?" in query:
+            query = query.replace("?", "%s")
+        return self._cursor.executemany(query, params_list)
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+    def fetchmany(self, size=None):
+        return self._cursor.fetchmany(size) if size else self._cursor.fetchmany()
+
+    @property
+    def lastrowid(self):
+        return getattr(self._cursor, "lastrowid", None)
+
+    @property
+    def rowcount(self):
+        return self._cursor.rowcount
+
+    def close(self):
+        self._cursor.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+class PostgresCompatibleConnection:
+    def __init__(self, raw_conn, is_pg=True):
+        self._conn = raw_conn
+        self._is_pg = is_pg
+
+    def cursor(self):
+        return PostgresCompatibleCursor(self._conn.cursor(), self._is_pg)
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            self.rollback()
+        else:
+            self.commit()
+        self.close()
 
 
 def get_timestamp():
@@ -52,6 +172,12 @@ def delete_customer(phone):
 
 
 def get_connection():
+    if HAS_SQLALCHEMY:
+        try:
+            engine = get_engine()
+            return PostgresCompatibleConnection(engine.raw_connection(), is_postgres())
+        except Exception:
+            pass
     if not DB_DIR.exists():
         DB_DIR.mkdir(parents=True, exist_ok=True)
     return sqlite3.connect(str(DB_PATH))
