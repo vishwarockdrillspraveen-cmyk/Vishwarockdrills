@@ -66,12 +66,14 @@ def get_connection_string():
                 user = p.username or "postgres"
                 if not user.endswith(f".{proj_ref}"):
                     user = f"{user}.{proj_ref}"
-                new_host = "aws-0-ap-south-1.pooler.supabase.com"
+                new_host = "aws-0-ap-northeast-2.pooler.supabase.com"
                 netloc = f"{user}:{p.password}@{new_host}:5432"
                 url = urllib.parse.urlunsplit(p._replace(netloc=netloc))
         except Exception:
             pass
 
+    if "aws-0-ap-south-1" in url and "flwsbfbrrwxqbrcicgkv" in url:
+        url = url.replace("aws-0-ap-south-1", "aws-0-ap-northeast-2")
     return url
 
 def get_engine():
