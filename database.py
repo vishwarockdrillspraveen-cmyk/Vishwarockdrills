@@ -1420,6 +1420,22 @@ def initialize_database():
     conn = get_connection()
     cursor = conn.cursor()
     if is_postgres():
+        pg_safe_alters = [
+            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_name TEXT DEFAULT ''",
+            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS pending_amount REAL DEFAULT 0",
+            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1",
+            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS warranty_applicable INTEGER DEFAULT 0",
+            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS warranty_start_date TEXT",
+            "ALTER TABLE sales ADD COLUMN IF NOT EXISTS warranty_end_date TEXT",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS sale_price REAL DEFAULT 0",
+            "ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS customer_phone TEXT",
+            "ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS customer_name TEXT",
+        ]
+        for sql in pg_safe_alters:
+            try:
+                cursor.execute(sql)
+            except Exception:
+                pass
         conn.close()
         return
     if is_postgres():
